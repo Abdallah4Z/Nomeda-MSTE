@@ -1,0 +1,108 @@
+# docker-compose.yml — Microservice architecture for AI Therapist
+#
+# BUILD (one-time, ~30 min):
+#   docker build -t ai-therapist-base:latest -f Dockerfile.base .
+#
+# BUILD + RUN (after any code change, seconds):
+#   docker compose build   # rebuilds only changed service Dockerfiles (just COPY)
+#   docker compose up -d
+#
+# TIP: After code changes, only rebuild the service(s) you changed:
+#   docker compose build web-api    # only rebuild the API layer
+#   docker compose build fusion-llm # only rebuild the LLM service
+
+services:
+  # ─── Microservices ────────────────────────────────────────────────────────
+
+  face-analysis:
+    build:
+      context: .
+      dockerfile: services/face_analysis/Dockerfile
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=
+      - CUDA_VISIBLE_DEVICES=-1
+      - TF_CPP_MIN_LOG_LEVEL=3
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  voice-analysis:
+    build:
+      context: .
+      dockerfile: services/voice_analysis/Dockerfile
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-0}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./models:/app/models
+    runtime: nvidia
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  fusion-llm:
+    build:
+      context: .
+      dockerfile: services/fusion_llm/Dockerfile
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-0}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_DISABLE_REQUIRE=1
+      - LLM_MODE=${LLM_MODE:-local}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - TTS_BACKEND=${TTS_BACKEND:-gemini}
+      - GEMINI_TTS_MODEL=${GEMINI_TTS_MODEL:-gemini-3.1-flash-tts-preview}
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./LLM/model:/app/LLM/model
+      - ./LLM/faiss_index:/app/LLM/faiss_index
+      - ./models:/app/models
+    runtime: nvidia
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # ─── API Gateway (orchestrator) ──────────────────────────────────────────
+
+  web-api:
+    build:
+      context: .
+      dockerfile: services/web_api/Dockerfile
+    environment:
+      - FACE_SERVICE_URL=http://face-analysis:8001
+      - VOICE_SERVICE_URL=http://voice-analysis:8002
+      - FUSION_SERVICE_URL=http://fusion-llm:8003
+      - CAMERA_SOURCE=${CAMERA_SOURCE:-browser}
+      - CAMERA_ID=${CAMERA_ID:-0}
+      - TTS_DISTRESS_THRESHOLD=${TTS_DISTRESS_THRESHOLD:-0}
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    depends_on:
+      face-analysis:
+        condition: service_healthy
+      voice-analysis:
+        condition: service_healthy
+      fusion-llm:
+        condition: service_healthy
+    restart: unless-stopped
+    stdin_open: true
+    tty: true

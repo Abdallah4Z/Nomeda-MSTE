@@ -1,0 +1,62 @@
+LLM/books/*.pdf
+LLM/model/
+LLM/model/*.gguf
+LLM/faiss_index/index.faiss
+LLM/faiss_index/chunks.pkl
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+.env
+*.pth
+*.egg-info/
+dist/
+build/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
+*.log
+
+# Qwen AI Assistant
+.qwen/
+.obsidian/
+.opencode/
+
+# Docker tar exports
+*.tar.gz
+
+# Presentation/Docs (non-code)
+presentation_script.md
+minimal_slides_guide.md
+image_prompts_for_slides.md
+
+# Labs (separate course work)
+labs/
+!labs/
+!labs/lab8/
+!labs/lab8/intelligent_data_query_llama.py
+
+# Generated session data
+data/sessions/*.csv
+data/video_sessions/*
+data/raw/*
+data/processed/*
+
+# AI-generated docs imagery
+docs/Gemini_Generated_Image_*.png
+
+# Generated test artifacts
+tests/hardware_tests/*.wav
+
+# Vendor JS (load via CDN in production)
+static/js/three.min.js
+static/js/tailwind.min.js
+static/js/chart.min.js
