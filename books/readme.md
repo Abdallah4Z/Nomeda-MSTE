@@ -20,3 +20,17 @@ It is extremely useful for designing the therapy logic, dialogue flow, memory sy
 
 This workbook contains practical exercises, worksheets, emotional tracking tools, and self-help techniques for anxiety, depression, stress, and panic.
 It is useful for adding interactive features to an AI therapy platform such as mood tracking, journaling, emotional check-ins, coping exercises, breathing exercises, and guided self-reflection activities.
+
+5.Motivational Interviewing: Preparing People for Change
+
+This book teaches your AI system how therapists talk to people in a supportive and empathetic way.
+
+It helps with:
+
+active listening
+understanding emotions
+asking better questions
+responding naturally
+making users feel understood and safe
+
+Very useful for improving AI therapeutic conversations and emotional response generation.
