@@ -1,5 +1,7 @@
+import asyncio
 import base64
 import os
+import time
 from typing import Optional
 
 from .base import TTSProvider, TTSResponse
@@ -51,12 +53,12 @@ class GeminiTTSProvider(TTSProvider):
         try:
             from google.genai import types
 
-            voice_name = voice or self._voice
-            response = self._client.models.generate_content(
+            response = await asyncio.to_thread(
+                self._client.models.generate_content,
                 model=self._model,
                 contents=text,
                 config=types.GenerateContentConfig(
-                    audio_timestamp=True,
+                    response_modalities=["AUDIO"],
                 ),
             )
 
@@ -66,16 +68,18 @@ class GeminiTTSProvider(TTSProvider):
                     if hasattr(part, 'inline_data') and part.inline_data:
                         audio_data = part.inline_data.data
                         break
-                    elif hasattr(part, 'audio') and part.audio:
-                        audio_data = part.audio.data
-                        break
 
             if not audio_data:
                 return TTSResponse(audio_data=b"", mime_type="audio/wav")
 
-            wav_path = os.path.join(self._tts_dir, "latest.wav")
+            ts = int(time.time() * 1000)
+            wav_path = os.path.join(self._tts_dir, f"tts_{ts}.wav")
+            latest_path = os.path.join(self._tts_dir, "latest.wav")
             with open(wav_path, "wb") as f:
                 f.write(audio_data)
+            temp_link = latest_path + ".tmp"
+            os.symlink(os.path.basename(wav_path), temp_link)
+            os.replace(temp_link, latest_path)
 
             b64 = base64.b64encode(audio_data).decode("utf-8")
             return TTSResponse(
@@ -85,5 +89,5 @@ class GeminiTTSProvider(TTSProvider):
                 base64=b64,
                 url=f"/api/tts/latest",
             )
-        except Exception as e:
+        except Exception:
             return TTSResponse(audio_data=b"", mime_type="audio/wav")

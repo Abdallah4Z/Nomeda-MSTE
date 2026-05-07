@@ -246,6 +246,74 @@ class FusionAgent:
             distress = 20
         return {"distress": distress, "response": "I'm here with you. How are you feeling right now?"}
 
+    def generate_report(self, summary_data):
+        checkin = summary_data.get("checkin", {}) or {}
+        stats = summary_data.get("stats", {}) or {}
+        messages = summary_data.get("messages", []) or []
+        duration = summary_data.get("duration_seconds", 0)
+
+        duration_min = int(duration // 60)
+        checkin_emotion = checkin.get("emotion", "N/A") or "N/A"
+        checkin_text = checkin.get("text", "") or ""
+        dominant = stats.get("dominant_emotion", "N/A") or "N/A"
+        avg_distress = int(stats.get("avg_distress", 0) or 0)
+        msg_count = int(stats.get("message_count", 0) or 0)
+
+        conversation = ""
+        for m in messages[-6:]:
+            role = "User" if m.get("role") == "user" else "Therapist"
+            conversation += f"{role}: {m.get('text', '')}\n"
+
+        user_prompt = (
+            f"Write a warm, professional therapy session summary report.\n\n"
+            f"Session duration: {duration_min} minutes\n"
+            f"User's initial mood at check-in: {checkin_emotion}\n"
+            f"User's check-in note: {checkin_text}\n"
+            f"Dominant emotion during session: {dominant}\n"
+            f"Average distress score (0-100): {avg_distress}\n"
+            f"Messages exchanged: {msg_count}\n"
+            f"Last exchanges:\n{conversation}\n\n"
+            f"Format: a 3-4 paragraph report including: (1) session overview, "
+            f"(2) emotional patterns observed, (3) supportive observations "
+            f"and gentle recommendations. Use a warm, clinical-but-caring tone. "
+            f"Do NOT use markdown headers or bullet points."
+        )
+
+        if self._local_llm:
+            try:
+                prompt = (
+                    f"<start_of_turn>system\n"
+                    f"You are a compassionate clinical psychologist writing a session summary. "
+                    f"Write in plain paragraphs, no markdown.\n"
+                    f"<end_of_turn>\n"
+                    f"<start_of_turn>user\n{user_prompt}<end_of_turn>\n"
+                    f"<start_of_turn>model\n"
+                )
+                response = self._local_llm(
+                    prompt, max_tokens=384, temperature=0.7,
+                    stop=["<end_of_turn>", "<start_of_turn>"],
+                    echo=False,
+                )
+                return response["choices"][0]["text"].strip()
+            except Exception as e:
+                print(f"[FusionAgent] Report local error: {e}")
+
+        if self.llm:
+            try:
+                from langchain_core.prompts import ChatPromptTemplate
+                from langchain_core.messages import SystemMessage, HumanMessage
+                report_prompt = ChatPromptTemplate.from_messages([
+                    ("system", "You are a compassionate clinical psychologist writing a session summary. Write in plain paragraphs, no markdown."),
+                    ("human", user_prompt)
+                ])
+                chain = report_prompt | self.llm
+                result = chain.invoke({})
+                return result.content.strip()
+            except Exception as e:
+                print(f"[FusionAgent] Report Groq error: {e}")
+
+        return None
+
     def fuse_inputs_fast(self, face_emotion, voice_emotion, stt_text="", max_tokens=128):
         return self.fuse_inputs(face_emotion, voice_emotion, stt_text)
 

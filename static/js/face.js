@@ -4,8 +4,8 @@
 
 const Face = (function () {
   var GRID = 16;
-  var SCALE = 9;
-  var SIZE = GRID * SCALE; // 144
+  var SCALE = 6;
+  var SIZE = GRID * SCALE; // 96
 
   var C = {
     head: '#34d399',
@@ -149,16 +149,16 @@ const Face = (function () {
     c.fill();
 
     // Bottom shadow
-    g.fillStyle = C.headDark;
-    hLine(g, 4, 14, 8, C.headDark);
-    px(g, 5, 15, C.headDark);
-    px(g, 10, 15, C.headDark);
+    c.fillStyle = C.headDark;
+    hLine(c, 4, 14, 8, C.headDark);
+    px(c, 5, 15, C.headDark);
+    px(c, 10, 15, C.headDark);
 
     // Ears
-    rect(g, 1, 5, 1, 3, C.headDark);
-    rect(g, 14, 5, 1, 3, C.headDark);
-    px(g, 1, 6, C.head);
-    px(g, 14, 6, C.head);
+    rect(c, 1, 5, 1, 3, C.headDark);
+    rect(c, 14, 5, 1, 3, C.headDark);
+    px(c, 1, 6, C.head);
+    px(c, 14, 6, C.head);
   }
 
   function drawBrows(c, p) {

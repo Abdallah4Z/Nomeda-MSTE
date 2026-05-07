@@ -602,7 +602,29 @@ def get_history():
         return SafeJSONResponse(content={"error": str(e)})
 
 
+@app.post("/api/session/report")
+def session_report(data: dict):
+    summary = data.get("summary", {})
+    try:
+        report = fusion_agent.generate_report(summary)
+        if report:
+            return {"status": "ok", "report": report, "source": "llm"}
+    except Exception as e:
+        print(f"[Report] LLM failed: {e}")
+
+    return {"status": "ok", "report": None, "source": "fallback", "data": summary}
+
+
 def generate_mjpeg():
+    blank = np.zeros((360, 480, 3), dtype=np.uint8)
+    blank[:] = (5, 5, 6)
+    cv2.putText(blank, "Start a session to begin", (60, 180),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 100, 110), 1)
+    cv2.putText(blank, "Camera feed will appear here", (50, 220),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (70, 70, 80), 1)
+    _, blank_jpg = cv2.imencode('.jpg', blank, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+    blank_bytes = blank_jpg.tobytes()
+
     while True:
         with frame_lock:
             frame = latest_display_frame if latest_display_frame is not None else latest_raw_frame
@@ -611,6 +633,9 @@ def generate_mjpeg():
             if ret:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        else:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + blank_bytes + b'\r\n')
         time.sleep(0.033)
 
 

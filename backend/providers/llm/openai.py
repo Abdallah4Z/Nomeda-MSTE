@@ -1,3 +1,5 @@
+import json
+import re
 from typing import Any, Dict, List, Optional
 
 from .base import LLMProvider, LLMResponse
@@ -68,6 +70,31 @@ class OpenAILikeLLMProvider(LLMProvider):
         except Exception as e:
             return LLMResponse(text="I'm here with you.", distress=0)
 
+    async def generate(
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> LLMResponse:
+        if not self._client:
+            return LLMResponse(text="I'm here with you.", distress=0)
+
+        try:
+            full_messages = [{"role": "system", "content": self._system_prompt}]
+            for msg in messages:
+                full_messages.append({"role": msg.get("role", "user"), "content": msg["content"]})
+
+            result = await self._client.chat.completions.create(
+                model=self._model,
+                messages=full_messages,
+                max_tokens=max_tokens or self._max_tokens,
+                temperature=temperature or self._temperature,
+            )
+            text = result.choices[0].message.content or ""
+            return self._parse_response(text)
+        except Exception:
+            return LLMResponse(text="I'm here with you.", distress=0)
+
     async def generate_with_context(
         self,
         messages: List[Dict[str, str]],
@@ -97,3 +124,31 @@ class OpenAILikeLLMProvider(LLMProvider):
             })
 
         return await self.generate(enriched_messages, max_tokens, temperature)
+
+    def _parse_response(self, text: str) -> LLMResponse:
+        distress = None
+        clean_text = text
+
+        try:
+            json_match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+                distress = data.get("distress")
+                if "response" in data:
+                    clean_text = data["response"]
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
+        if distress is None:
+            patterns = {
+                80: re.compile(r'\b(crisis|severe|extremely|desperate)\b', re.I),
+                60: re.compile(r'\b(very|really|struggling|hard|difficult)\b', re.I),
+                40: re.compile(r'\b(somewhat|moderate|bit|slightly)\b', re.I),
+                20: re.compile(r'\b(mild|little|okay|fine)\b', re.I),
+            }
+            for level, pattern in patterns.items():
+                if pattern.search(text):
+                    distress = level
+                    break
+
+        return LLMResponse(text=clean_text, distress=distress or 0)

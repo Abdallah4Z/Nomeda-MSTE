@@ -1,4 +1,5 @@
 import csv
+import fcntl
 import json
 import os
 from datetime import datetime
@@ -24,21 +25,25 @@ class CSVSessionStore(SessionStore):
             json.dump(data, f, indent=2, default=str)
 
         csv_path = os.path.join(self._sessions_dir, "sessions.csv")
-        is_new = not os.path.exists(csv_path)
         with open(csv_path, "a", newline="") as f:
-            writer = csv.writer(f)
-            if is_new:
-                writer.writerow(["session_id", "timestamp", "duration", "emotion", "distress", "messages"])
-            stats = data.get("stats", {})
-            checkin = data.get("checkin", {}) or {}
-            writer.writerow([
-                session_id,
-                data.get("timestamp", datetime.now().isoformat()),
-                data.get("duration_seconds", 0),
-                checkin.get("emotion", stats.get("dominant_emotion", "")),
-                stats.get("avg_distress", ""),
-                stats.get("message_count", 0),
-            ])
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                is_new = os.path.getsize(csv_path) == 0
+                writer = csv.writer(f)
+                if is_new:
+                    writer.writerow(["session_id", "timestamp", "duration", "emotion", "distress", "messages"])
+                stats = data.get("stats", {})
+                checkin = data.get("checkin", {}) or {}
+                writer.writerow([
+                    session_id,
+                    data.get("timestamp", datetime.now().isoformat()),
+                    data.get("duration_seconds", 0),
+                    checkin.get("emotion", stats.get("dominant_emotion", "")),
+                    stats.get("avg_distress", ""),
+                    stats.get("message_count", 0),
+                ])
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
     async def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         filepath = os.path.join(self._sessions_dir, f"session_{session_id}.json")
