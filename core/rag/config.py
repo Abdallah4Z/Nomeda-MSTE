@@ -36,9 +36,9 @@ class RAGConfig:
 
     # Generation
     model_repo: str = "nomeda-lab/nomeda-therapist-2B"
-    max_context_chunks: int = 5
-    max_tokens: int = 256
-    min_new_tokens: int = 20
+    max_context_chunks: int = 3
+    max_tokens: int = 80
+    min_new_tokens: int = 10
     temperature: float = 0.7
     top_p: float = 0.9
     repetition_penalty: float = 1.1
@@ -47,3 +47,8 @@ class RAGConfig:
     # Cache
     response_cache_size: int = 500
     response_cache_ttl: int = 3600
+
+    def __post_init__(self):
+        local = Path(__file__).resolve().parent.parent.parent / "models" / "nomeda-therapist-2B"
+        if local.exists():
+            self.model_repo = str(local)

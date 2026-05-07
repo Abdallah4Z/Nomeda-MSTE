@@ -67,7 +67,7 @@ class RAGPipeline:
             repo,
             device_map="auto",
             trust_remote_code=True,
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
         )
         self._llm.eval()
         if torch.cuda.is_available():
@@ -75,6 +75,13 @@ class RAGPipeline:
                 free, total = torch.cuda.mem_get_info(i)
                 print(f"  GPU {i}: {(total - free) / 1e9:.2f}GB used / {total / 1e9:.2f}GB total")
         print("[+] Model loaded")
+
+    def _clean_response(self, text: str) -> str:
+        import re
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+        text = re.sub(r'<\|im_end\|>.*$', '', text, flags=re.DOTALL).strip()
+        text = re.sub(r'<\|endoftext\|>.*$', '', text, flags=re.DOTALL).strip()
+        return text
 
     def _build_prompt(self, user_message: str, context: str,
                       history: Optional[List[Dict[str, str]]] = None) -> str:
@@ -144,6 +151,7 @@ class RAGPipeline:
         input_len = inputs["input_ids"].shape[1]
         n_tokens = outputs.shape[1] - input_len
         response = self.tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True).strip()
+        response = self._clean_response(response)
 
         t_total = time.time() - t_start
         speed = n_tokens / t_gen if t_gen > 0 else 0

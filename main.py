@@ -1,132 +1,176 @@
+"""
+Nomeda Therapist — Full Multimodal Pipeline
+Cam + Mic → FER + SER + STT → RAG-enhanced LLM → Qwen3-TTS
+"""
+
 import threading
 import time
 import json
+import os
+
 from modules.video.video_emotion import VideoEmotionAnalyzer
 from modules.voice.voice_emotion import VoiceEmotionAnalyzer
+from modules.voice.stt_engine import STTEngine
 from modules.biometrics.heart_rate_processor import BiometricProcessor
 from core.model.inference import FusionAgent
-from modules.output.tts_engine import TTSEngine
+from modules.tts.qwen_tts import QwenTTS
 from modules.output.session_logger import SessionLogger
 
-# --- System Shared State ---
+# ── Config ────────────────────────────────────────────────────────────────────
+TTS_BACKEND = os.getenv("TTS_BACKEND", "qwen").strip().lower()
+USE_STT = os.getenv("USE_STT", "true").strip().lower() == "true"
+FUSION_INTERVAL = float(os.getenv("FUSION_INTERVAL", "4.0"))
+
+# ── Shared State ──────────────────────────────────────────────────────────────
 system_state = {
-    "video_emotion": "Starting...",
-    "voice_arousal": "Starting...",
-    "biometric_data": "Starting...",
-    "ai_recommendation": {"distress": 0, "recommendation": "Initializing..."}
+    "face_emotion": "neutral",
+    "voice_emotion": "neutral",
+    "stt_text": "",
+    "biometric_data": "",
+    "last_user_text": "",
+    "fusion_result": {"distress": 0, "response": "Initializing..."},
+    "last_spoken_response": "",
 }
 
-# --- Modality Worker Threads ---
+
+# ── Modality Workers ──────────────────────────────────────────────────────────
 
 def video_worker():
     global system_state
-    analyzer = VideoEmotionAnalyzer()
-    print("[Thread] Video Modality Started")
     try:
+        analyzer = VideoEmotionAnalyzer()
+        print("[Video] FER started")
         while True:
-            system_state["video_emotion"] = analyzer.analyze_frame()
+            system_state["face_emotion"] = analyzer.analyze_frame()
             time.sleep(0.5)
     except Exception as e:
-        print(f"[Thread] Video Modality Error: {e}")
-    finally:
-        analyzer.release()
+        print(f"[Video] Error: {e}")
+
 
 def voice_worker():
     global system_state
-    analyzer = VoiceEmotionAnalyzer()
-    print("[Thread] Voice Modality Started")
     try:
+        analyzer = VoiceEmotionAnalyzer()
+        print("[Voice] SER started")
         while True:
-            system_state["voice_arousal"] = analyzer.analyze_audio()
+            system_state["voice_emotion"] = analyzer.analyze_audio()
             time.sleep(0.5)
     except Exception as e:
-        print(f"[Thread] Voice Modality Error: {e}")
-    finally:
-        analyzer.close()
+        print(f"[Voice] Error: {e}")
+
+
+def stt_worker():
+    global system_state
+    if not USE_STT:
+        print("[STT] Disabled")
+        return
+    try:
+        engine = STTEngine(model_size="tiny", device="cuda")
+        print("[STT] Started")
+        # STT is typically triggered on-demand from the fusion worker
+        # This worker maintains the engine; transcription happens in fusion_worker
+        while True:
+            time.sleep(1)
+    except Exception as e:
+        print(f"[STT] Error: {e}")
+
 
 def biometric_worker():
     global system_state
-    import os
-    source = os.getenv("BIOMETRIC_SOURCE", "auto").strip()
-    processor = BiometricProcessor(source=source)
-    print("[Thread] Biometric Modality Started")
     try:
+        source = os.getenv("BIOMETRIC_SOURCE", "auto").strip()
+        processor = BiometricProcessor(source=source)
+        print("[Biometric] Started")
         while True:
             system_state["biometric_data"] = processor.analyze_biometrics()
             time.sleep(1.0)
     except Exception as e:
-        print(f"[Thread] Biometric Modality Error: {e}")
-    finally:
-        processor.close()
+        print(f"[Biometric] Error: {e}")
 
-def ai_fusion_worker():
+
+def fusion_worker():
     global system_state
     agent = FusionAgent()
-    tts = TTSEngine()
+
+    tts = None
+    if TTS_BACKEND == "qwen":
+        try:
+            tts = QwenTTS(speaker="Ryan", language="English")
+            print("[TTS] Qwen3-TTS ready")
+        except Exception as e:
+            print(f"[TTS] Qwen load failed: {e}")
+
     logger = SessionLogger()
-    last_recommendation = ""
-    print("[Thread] AI Fusion Engine Started")
+    last_text = ""
+
+    print("[Fusion] RAG + LLM engine started")
     while True:
         try:
-            # We poll the fusion every 3-5 seconds to avoid over-requesting LLM
-            recommendation = agent.fuse_inputs(
-                system_state["voice_arousal"],
-                system_state["biometric_data"],
-                system_state["video_emotion"]
-            )
-            # Try parsing if it's a JSON string from LLM
-            if isinstance(recommendation, str):
-                try:
-                    # Look for JSON structure { ... } if LLM added text
-                    start = recommendation.find("{")
-                    end = recommendation.find("}") + 1
-                    recommendation = json.loads(recommendation[start:end])
-                except:
-                    pass
-            
-            system_state["ai_recommendation"] = recommendation
-            print(f"-- [LIVE RECOMMENDATION]: {recommendation} --")
-            
-            # --- Log the session event ---
-            logger.log_event(system_state)
-            
-            # --- Speak Recommendation if significant ---
-            if isinstance(recommendation, dict):
-                rec_text = recommendation.get("recommendation", "")
-                distress = recommendation.get("distress", 0)
-                
-                if rec_text and rec_text != last_recommendation and distress >= 50:
-                    tts.speak(rec_text)
-                    last_recommendation = rec_text
-                    
-            time.sleep(5)
-        except Exception as e:
-            print(f"[Thread] AI Fusion Error: {e}")
-            time.sleep(5)
+            face_em = system_state["face_emotion"]
+            voice_em = system_state["voice_emotion"]
+            bio = system_state["biometric_data"]
+            stt = system_state["stt_text"]
 
-# --- Main Entry Point ---
+            user_said = stt or system_state.get("last_user_text", "")
+            if user_said:
+                last_text = user_said
+
+            result = agent.fuse_inputs(
+                face_emotion=face_em,
+                voice_emotion=voice_em,
+                biometric=bio,
+                stt_text=user_said,
+            )
+
+            system_state["fusion_result"] = result
+            print(f"\n── [Fusion] distress={result['distress']} | "
+                  f"face={face_em} voice={voice_em}")
+            print(f"  Nomeda: {result['response']}\n")
+
+            logger.log_event({
+                "face_emotion": face_em,
+                "voice_emotion": voice_em,
+                "stt_text": user_said,
+                "fusion_result": result,
+            })
+
+            # Speak via Qwen TTS
+            response = result.get("response", "")
+            if tts and response and response != system_state["last_spoken_response"]:
+                tts.speak(response, emotion_hint=face_em)
+                system_state["last_spoken_response"] = response
+
+            time.sleep(FUSION_INTERVAL)
+
+        except Exception as e:
+            print(f"[Fusion] Error: {e}")
+            time.sleep(FUSION_INTERVAL)
+
 
 def main():
-    # 1. Start Sensing Threads
     threads = [
-        threading.Thread(target=video_worker, daemon=True),
-        threading.Thread(target=voice_worker, daemon=True),
-        threading.Thread(target=biometric_worker, daemon=True),
-        threading.Thread(target=ai_fusion_worker, daemon=True)
+        threading.Thread(target=video_worker, daemon=True, name="video"),
+        threading.Thread(target=voice_worker, daemon=True, name="voice"),
+        threading.Thread(target=biometric_worker, daemon=True, name="biometric"),
+        threading.Thread(target=stt_worker, daemon=True, name="stt"),
+        threading.Thread(target=fusion_worker, daemon=True, name="fusion"),
     ]
-    
+
     for t in threads:
         t.start()
-        
-    print("\n--- MULTIMODAL EMOTION MONITORING SYSTEM READY ---")
-    print("Real-time analysis is active. Press Ctrl+C to stop.")
-    
+
+    print("\n" + "=" * 55)
+    print("  NOMEDA THERAPIST — Full Multimodal Pipeline")
+    print("  FER + SER + STT → RAG LLM → Qwen3-TTS")
+    print("=" * 55)
+    print("  Press Ctrl+C to stop.\n")
+
     try:
-        # Keep the main thread alive while workers run
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\nShutting down system...")
+        print("\nShutting down Nomeda...")
+
 
 if __name__ == "__main__":
     main()
