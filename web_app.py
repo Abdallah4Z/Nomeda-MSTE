@@ -192,19 +192,8 @@ def display_worker():
             frame = latest_raw_frame.copy() if latest_raw_frame is not None else None
 
         if frame is not None:
-            annotated = frame.copy()
-            emotion_text = ""
-            deepface_info = getattr(video_analyzer, 'last_deepface_info', None)
-            with state_lock:
-                emotion_text = system_state.get("video_emotion", "")
-
-            try:
-                annotated, _ = detect_and_annotate(annotated, emotion_text=emotion_text, deepface_info=deepface_info)
-            except Exception:
-                pass
-
             with frame_lock:
-                latest_display_frame = annotated
+                latest_display_frame = frame
 
         time.sleep(0.066)
 

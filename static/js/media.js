@@ -149,7 +149,11 @@ var tlChart = null;
 
 function initTimelineChart() {
   var canvas = document.getElementById('timelineChart');
-  if (!canvas || typeof Chart === 'undefined') return;
+  if (!canvas || typeof Chart === 'undefined') {
+    // Retry in 1s if chart.js not yet loaded
+    setTimeout(initTimelineChart, 1000);
+    return;
+  }
   if (tlChart) { tlChart.destroy(); tlChart = null; }
   tlChart = new Chart(canvas, {
     type: 'line',
@@ -162,17 +166,18 @@ function initTimelineChart() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#7a7a8c', font: { size: 10 } } } },
+      plugins: { legend: { display: true, labels: { color: '#aaa', font: { size: 9 }, boxWidth: 12 } } },
       scales: {
-        x: { display: true, ticks: { color: '#555566', font: { size: 8 }, maxTicksLimit: 8 } },
-        y: { min: 0, max: 7, ticks: { stepSize: 1, color: '#555566', font: { size: 8 },
-              callback: function(v) { var m = {0:'Ang',1:'Fer',2:'Dis',3:'Sad',4:'Neu',5:'Cal',6:'Hap',7:'Sur'}; return m[v] || v; }
+        x: { display: true, ticks: { color: '#555', font: { size: 7 }, maxTicksLimit: 6, maxRotation: 0 } },
+        y: { min: 0, max: 7, ticks: { stepSize: 1, color: '#555', font: { size: 8 },
+              callback: function(v) { return {0:'Ang',1:'Fer',2:'Dis',3:'Sad',4:'Neu',5:'Cal',6:'Hap',7:'Sur'}[v]||v; }
             }
         }
       },
-      animation: { duration: 200 }
+      animation: { duration: 150 }
     }
   });
+  console.log('[Timeline] Chart initialized');
 }
 
 var emotionValue = { 'angry':0,'anger':0,'fear':1,'disgust':2,'sad':3,'neutral':4,'calm':5,'happy':6,'surprised':7,

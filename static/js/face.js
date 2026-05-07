@@ -6,13 +6,13 @@ const Face = (function () {
   var CYAN = '#00e5ff';
   var BG   = '#07070d';
 
-  var LEX = 185, REX = 375, EY_BASE = 245;
+  var LEX = 170, REX = 390, EY_BASE = 245;
 
   var DEFS = {
-    normal: { hw:90, hh:100, cr:25, tb:  0, bb: 0, ey: 0, morph:0 },
-    happy:  { hw:95, hh:  6, cr: 6, tb:105, bb: 0, ey:-6, morph:0 },
-    sad:    { hw:90, hh: 85, cr:25, tb:-80, bb:10, ey:12, morph:0 },
-    loved:  { hw:90, hh:100, cr:25, tb:  0, bb: 0, ey: 0, morph:1 }
+    normal: { hw:75, hh:80, cr:28, tb:  0, bb: 0, ey: 0, morph:0 },
+    happy:  { hw:78, hh:  6, cr: 6, tb:100, bb: 0, ey:-6, morph:0 },
+    sad:    { hw:75, hh:70, cr:25, tb:-70, bb: 8, ey:10, morph:0 },
+    loved:  { hw:75, hh:80, cr:28, tb:  0, bb: 0, ey: 0, morph:1 }
   };
 
   var canvas, ctx;
