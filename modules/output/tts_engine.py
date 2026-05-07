@@ -7,14 +7,11 @@ import base64
 from pathlib import Path
 from datetime import datetime
 
-TTS_BACKEND = os.getenv("TTS_BACKEND", "local").strip().lower()
-# Auto-select Gemini if a valid GOOGLE_API_KEY is present
+TTS_BACKEND = os.getenv("TTS_BACKEND", "qwen").strip().lower()
 _google_key = os.getenv("GOOGLE_API_KEY", "")
 if _google_key and _google_key not in ("", "your_google_api_key_here", "your_key_here"):
     TTS_BACKEND = "gemini"
     print(f"[TTSEngine] GOOGLE_API_KEY detected — using Gemini TTS backend")
-else:
-    print(f"[TTSEngine] No valid GOOGLE_API_KEY — using local pyttsx3 TTS")
 
 TTS_OUTPUT_DIR = Path(os.getenv("TTS_OUTPUT_DIR", "data/tts"))
 TTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -219,10 +216,18 @@ class TTSEngine:
         self._engine = None
         if self.backend == "gemini":
             self._engine = GeminiTTSEngine()
+        elif self.backend == "qwen":
+            try:
+                from modules.tts.qwen_tts import QwenTTS
+                self._engine = QwenTTS()
+                print(f"[TTSEngine] Qwen TTS loaded as primary backend")
+            except Exception as e:
+                print(f"[TTSEngine] Qwen TTS failed: {e}. Falling back to local.")
+                self._engine = LocalTTSEngine(rate=rate)
         else:
             self._engine = LocalTTSEngine(rate=rate)
-            if getattr(self._engine, "engine", None) is None and TTS_BACKEND == "local":
-                print("[TTSEngine] Local TTS failed to init. Set TTS_BACKEND=gemini and GOOGLE_API_KEY for AI voice.")
+            if getattr(self._engine, "engine", None) is None:
+                print("[TTSEngine] Local TTS failed. Set TTS_BACKEND=qwen or TTS_BACKEND=gemini with GOOGLE_API_KEY.")
 
     def speak(self, text, on_done=None):
         if self._engine:
