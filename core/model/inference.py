@@ -168,6 +168,23 @@ class FusionAgent:
             print(f"[FusionAgent] Generation error: {e}")
             return None
 
+    def ensure_llm_loaded(self):
+        import torch
+        if not self.pipeline or self.pipeline._llm is None:
+            return
+        dev = next(self.pipeline._llm.parameters()).device
+        if str(dev) == "cpu":
+            print("[FusionAgent] Moving LLM to GPU...")
+            self.pipeline._llm = self.pipeline._llm.to("cuda")
+            torch.cuda.empty_cache()
+
+    def offload_llm(self):
+        import torch
+        if self.pipeline and self.pipeline._llm is not None:
+            self.pipeline._llm = self.pipeline._llm.to("cpu")
+            torch.cuda.empty_cache()
+            print("[FusionAgent] LLM offloaded to CPU")
+
     def _clean_response(self, text: str) -> str:
         import re
         text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()

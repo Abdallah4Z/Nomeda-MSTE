@@ -1,12 +1,13 @@
 """
-Nomeda Therapist — Full Multimodal Pipeline
-Cam + Mic → FER + SER + STT → RAG-enhanced LLM → Qwen3-TTS
+Nomeda Therapist — Sequenced Pipeline
+Cam + Mic → FER + SER + STT → RAG LLM (offload) → Qwen3-TTS (offload) → loop
 """
 
 import threading
 import time
 import json
 import os
+import queue
 
 from modules.video.video_emotion import VideoEmotionAnalyzer
 from modules.voice.voice_emotion import VoiceEmotionAnalyzer
@@ -16,24 +17,21 @@ from core.model.inference import FusionAgent
 from modules.tts.qwen_tts import QwenTTS
 from modules.output.session_logger import SessionLogger
 
-# ── Config ────────────────────────────────────────────────────────────────────
 TTS_BACKEND = os.getenv("TTS_BACKEND", "qwen").strip().lower()
 USE_STT = os.getenv("USE_STT", "true").strip().lower() == "true"
 FUSION_INTERVAL = float(os.getenv("FUSION_INTERVAL", "4.0"))
 
-# ── Shared State ──────────────────────────────────────────────────────────────
 system_state = {
     "face_emotion": "neutral",
     "voice_emotion": "neutral",
     "stt_text": "",
     "biometric_data": "",
-    "last_user_text": "",
     "fusion_result": {"distress": 0, "response": "Initializing..."},
     "last_spoken_response": "",
 }
 
+tts_queue: queue.Queue = queue.Queue(maxsize=1)
 
-# ── Modality Workers ──────────────────────────────────────────────────────────
 
 def video_worker():
     global system_state
@@ -67,8 +65,6 @@ def stt_worker():
     try:
         engine = STTEngine(model_size="tiny", device="cuda")
         print("[STT] Started")
-        # STT is typically triggered on-demand from the fusion worker
-        # This worker maintains the engine; transcription happens in fusion_worker
         while True:
             time.sleep(1)
     except Exception as e:
@@ -91,17 +87,7 @@ def biometric_worker():
 def fusion_worker():
     global system_state
     agent = FusionAgent()
-
-    tts = None
-    if TTS_BACKEND == "qwen":
-        try:
-            tts = QwenTTS(speaker="Ryan", language="English")
-            print("[TTS] Qwen3-TTS ready")
-        except Exception as e:
-            print(f"[TTS] Qwen load failed: {e}")
-
     logger = SessionLogger()
-    last_text = ""
 
     print("[Fusion] RAG + LLM engine started")
     while True:
@@ -111,10 +97,7 @@ def fusion_worker():
             bio = system_state["biometric_data"]
             stt = system_state["stt_text"]
 
-            user_said = stt or system_state.get("last_user_text", "")
-            if user_said:
-                last_text = user_said
-
+            user_said = stt or ""
             result = agent.fuse_inputs(
                 face_emotion=face_em,
                 voice_emotion=voice_em,
@@ -123,9 +106,10 @@ def fusion_worker():
             )
 
             system_state["fusion_result"] = result
+            response = result.get("response", "")
             print(f"\n── [Fusion] distress={result['distress']} | "
                   f"face={face_em} voice={voice_em}")
-            print(f"  Nomeda: {result['response']}\n")
+            print(f"  Nomeda: {response}\n")
 
             logger.log_event({
                 "face_emotion": face_em,
@@ -134,17 +118,36 @@ def fusion_worker():
                 "fusion_result": result,
             })
 
-            # Speak via Qwen TTS
-            response = result.get("response", "")
-            if tts and response and response != system_state["last_spoken_response"]:
-                tts.speak(response, emotion_hint=face_em)
-                system_state["last_spoken_response"] = response
+            # Offload LLM, then queue TTS work
+            agent.offload_llm()
+            if TTS_BACKEND == "qwen" and response and response != system_state["last_spoken_response"]:
+                try:
+                    tts_queue.put_nowait({"text": response, "emotion": face_em})
+                    system_state["last_spoken_response"] = response
+                except queue.Full:
+                    pass
 
             time.sleep(FUSION_INTERVAL)
-
         except Exception as e:
             print(f"[Fusion] Error: {e}")
             time.sleep(FUSION_INTERVAL)
+
+
+def tts_worker():
+    global system_state
+    if TTS_BACKEND != "qwen":
+        return
+
+    tts = QwenTTS(speaker="Ryan", language="English")
+    print("[TTS] Qwen3-TTS worker started")
+    while True:
+        try:
+            job = tts_queue.get()
+            tts.load()
+            tts.generate_sync(job["text"], emotion_hint=job["emotion"])
+            tts.offload()
+        except Exception as e:
+            print(f"[TTS] Error: {e}")
 
 
 def main():
@@ -155,15 +158,17 @@ def main():
         threading.Thread(target=stt_worker, daemon=True, name="stt"),
         threading.Thread(target=fusion_worker, daemon=True, name="fusion"),
     ]
+    if TTS_BACKEND == "qwen":
+        threads.append(threading.Thread(target=tts_worker, daemon=True, name="tts"))
 
     for t in threads:
         t.start()
 
     print("\n" + "=" * 55)
-    print("  NOMEDA THERAPIST — Full Multimodal Pipeline")
-    print("  FER + SER + STT → RAG LLM → Qwen3-TTS")
+    print("  NOMEDA THERAPIST — Sequenced Pipeline")
+    print("  FER + SER + STT → RAG LLM → (offload) → Qwen3-TTS → (offload)")
     print("=" * 55)
-    print("  Press Ctrl+C to stop.\n")
+    print("  Models never share VRAM. Press Ctrl+C to stop.\n")
 
     try:
         while True:

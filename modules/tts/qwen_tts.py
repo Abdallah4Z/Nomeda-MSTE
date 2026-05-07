@@ -40,11 +40,17 @@ EMOTION_SPEAKER_MAP = {
 
 
 class QwenTTS:
-    def __init__(self, model_name: str = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+    def __init__(self, model_name: str = "",
                  device: str = "cuda:0",
                  dtype: str = "bfloat16",
                  speaker: str = "Ryan",
                  language: str = "English"):
+        if not model_name:
+            local = Path(__file__).resolve().parent.parent.parent / "models" / "qwen3-tts-0.6B"
+            if local.exists():
+                model_name = str(local)
+            else:
+                model_name = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
         self.model_name = model_name
         self.device = device
         self.dtype = dtype
@@ -64,11 +70,19 @@ class QwenTTS:
             dtype_map = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}
             torch_dtype = dtype_map.get(self.dtype, torch.bfloat16)
             print(f"[QwenTTS] Loading {self.model_name}...")
+
+            attn = "flash_attention_2"
+            try:
+                import flash_attn
+            except ImportError:
+                attn = "eager"
+                print("[QwenTTS] flash_attn not installed, using eager attention")
+
             self._model = Qwen3TTSModel.from_pretrained(
                 self.model_name,
                 device_map=self.device,
                 dtype=torch_dtype,
-                attn_implementation="flash_attention_2",
+                attn_implementation=attn,
             )
             print(f"[QwenTTS] Loaded successfully (device={self.device})")
         except ImportError:
@@ -77,6 +91,19 @@ class QwenTTS:
         except Exception as e:
             print(f"[QwenTTS] ERROR loading model: {e}")
             raise
+
+    def load(self):
+        self._load()
+
+    def offload(self):
+        import torch
+        if self._model is not None:
+            try:
+                self._model = self._model.to("cpu")
+            except AttributeError:
+                self._model = None
+            torch.cuda.empty_cache()
+            print("[QwenTTS] Model offloaded to CPU")
 
     def _select_speaker(self, emotion_hint: str) -> str:
         emotion_hint = emotion_hint.lower().strip()
