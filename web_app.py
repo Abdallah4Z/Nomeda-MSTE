@@ -380,7 +380,7 @@ def read_root():
 def start_session():
     global running, current_logger
     if running:
-        return {"status": "already_running"}
+        return {"status": "already_running", "session_id": current_logger.filename if current_logger else "unknown"}
     running = True
     current_logger = SessionLogger()
     with state_lock:
@@ -389,7 +389,7 @@ def start_session():
         system_state["llm_response"] = "Initializing..."
         system_state["distress"] = 0
     voice_analyzer.clear_transcript()
-    return {"status": "started"}
+    return {"status": "started", "session_id": current_logger.filename}
 
 
 @app.post("/api/stop")
@@ -406,6 +406,135 @@ def stop_session():
         system_state["tts_audio_b64"] = None
         system_state["tts_generating"] = False
     return {"status": "stopped"}
+
+
+@app.post("/api/session/end")
+def session_end():
+    global running, current_logger
+    running = False
+    with state_lock:
+        system_state["video_emotion"] = "Idle"
+        system_state["voice_emotion"] = "Idle"
+        system_state["llm_response"] = "Session ended."
+        system_state["distress"] = 0
+        system_state["stt_text"] = ""
+    return {"status": "ended"}
+
+
+@app.post("/api/chat")
+def chat_message(data: dict):
+    message = data.get("message", "")
+    if not message:
+        return JSONResponse(content={"error": "empty_message"}, status_code=400)
+
+    with state_lock:
+        face_emotion = system_state["video_emotion"]
+        voice_emotion = system_state["voice_emotion"]
+
+    stt_text = voice_analyzer.get_latest_transcript() or ""
+
+    try:
+        result = fusion_agent.fuse_inputs(face_emotion, voice_emotion, stt_text)
+        if not isinstance(result, dict):
+            result = {"distress": 50, "response": str(result)}
+
+        distress = result.get("distress", 0)
+        response = result.get("response", "I'm here with you.")
+
+        with state_lock:
+            system_state["llm_response"] = response
+            system_state["distress"] = distress
+
+        tts_url = None
+        tts_b64 = None
+        if response and distress >= int(os.getenv("TTS_DISTRESS_THRESHOLD", "0")):
+            try:
+                filepath, mime, audio_b64 = tts_engine.generate_sync(response)
+                if filepath:
+                    _on_tts_done(filepath, mime, audio_b64)
+                    tts_url = f"/api/tts/latest?t={int(time.time())}"
+                    tts_b64 = audio_b64
+            except Exception as e:
+                print(f"[Chat] TTS error: {e}")
+
+        return {
+            "response": response,
+            "distress": distress,
+            "face_emotion": face_emotion,
+            "voice_emotion": voice_emotion,
+            "tts_audio_url": tts_url,
+            "tts_audio_b64": tts_b64,
+            "rag_sources": []
+        }
+    except Exception as e:
+        print(f"[Chat] Error: {e}")
+        return {
+            "response": "I'm here with you. Tell me more about how you're feeling.",
+            "distress": 30,
+            "face_emotion": "Neutral",
+            "voice_emotion": "Neutral",
+            "rag_sources": []
+        }
+
+
+@app.post("/api/voice-note")
+async def voice_note(audio: UploadFile = File(...)):
+    content = await audio.read()
+    if not content:
+        return JSONResponse(content={"error": "empty_audio"}, status_code=400)
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        out_path = tmp_path + ".raw"
+        cmd = [
+            "ffmpeg", "-y", "-i", tmp_path,
+            "-f", "s16le", "-acodec", "pcm_s16le",
+            "-ar", "16000", "-ac", "1",
+            out_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, timeout=10)
+        transcript = ""
+        emotion = "Neutral"
+
+        if result.returncode == 0 and os.path.exists(out_path):
+            raw_audio = np.fromfile(out_path, dtype=np.int16).astype(np.float32) / 32768.0
+            if len(raw_audio) > 16000 * 0.5:
+                try:
+                    voice_analyzer.feed_browser_audio(raw_audio)
+                    time.sleep(1.5)
+                    transcript = voice_analyzer.get_latest_transcript() or ""
+                    e = voice_analyzer.analyze_audio()
+                    if e and e not in ("Idle", "Error", "Unavailable"):
+                        emotion = e
+                except Exception as ex:
+                    print(f"[VoiceNote] Processing error: {ex}")
+            try:
+                os.remove(out_path)
+            except OSError:
+                pass
+
+        return {"transcript": transcript, "emotion": emotion}
+    except Exception as e:
+        print(f"[VoiceNote] Error: {e}")
+        return {"transcript": "", "emotion": "Unavailable"}
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+
+@app.post("/api/session/send-summary")
+def send_summary(data: dict):
+    email = data.get("email", "")
+    summary = data.get("summary", {})
+    print(f"[Email] Would send summary to {email}: {str(summary)[:200]}...")
+    return {"status": "ok", "to": email, "message": "Summary queued for delivery"}
 
 
 @app.get("/api/tts/latest")

@@ -29,12 +29,20 @@ class GroqLLMProvider(LLMProvider):
             return
         try:
             from langchain_groq import ChatGroq
-            self._client = ChatGroq(
+            client = ChatGroq(
                 api_key=self._api_key,
                 model=self._model,
                 temperature=self._temperature,
                 max_tokens=self._max_tokens,
             )
+            import asyncio
+            try:
+                await asyncio.wait_for(
+                    client.ainvoke([{"role": "user", "content": "ping"}]), timeout=5
+                )
+            except Exception:
+                pass
+            self._client = client
         except ImportError:
             pass
 

@@ -202,7 +202,26 @@ function initFace() {
       Face.setExpression('idle');
     }
   } catch (e) {
-    console.warn('Face init failed:', e);
+    console.warn('Face init failed, drawing fallback:', e);
+    var ctx = el.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#34d399';
+      ctx.beginPath();
+      ctx.arc(72, 72, 40, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#064e3b';
+      ctx.beginPath();
+      ctx.arc(56, 60, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(88, 60, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(72, 80, 12, 0, Math.PI);
+      ctx.strokeStyle = '#064e3b';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
   }
 }
 

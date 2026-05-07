@@ -244,10 +244,11 @@ input, textarea, button { font-family: inherit; }
 }
 
 #robotFace {
-  width: 96px; height: 96px; display: block;
+  width: 96px; height: 96px; display: block; margin: 0 auto;
   image-rendering: pixelated; image-rendering: crisp-edges;
-  filter: drop-shadow(0 0 20px rgba(52, 211, 153, 0.12));
-  border-radius: 16px; background: rgba(52, 211, 153, 0.03);
+  filter: drop-shadow(0 0 20px rgba(52, 211, 153, 0.15));
+  border-radius: 16px; background: rgba(52, 211, 153, 0.08);
+  border: 1px solid rgba(52, 211, 153, 0.15);
 }
 
 /* ── Chat Messages ── */

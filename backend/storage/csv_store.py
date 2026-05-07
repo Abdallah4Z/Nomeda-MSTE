@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import fcntl
 import json
@@ -21,14 +22,21 @@ class CSVSessionStore(SessionStore):
 
     async def save_session(self, session_id: str, data: Dict[str, Any]) -> None:
         filepath = os.path.join(self._sessions_dir, f"session_{session_id}.json")
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._write_json, filepath, data)
 
         csv_path = os.path.join(self._sessions_dir, "sessions.csv")
+        await loop.run_in_executor(None, self._write_csv_row, csv_path, session_id, data)
+
+    def _write_json(self, path: str, data: Dict[str, Any]) -> None:
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+
+    def _write_csv_row(self, csv_path: str, session_id: str, data: Dict[str, Any]) -> None:
+        is_new = not os.path.exists(csv_path) or os.path.getsize(csv_path) == 0
         with open(csv_path, "a", newline="") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
-                is_new = os.path.getsize(csv_path) == 0
                 writer = csv.writer(f)
                 if is_new:
                     writer.writerow(["session_id", "timestamp", "duration", "emotion", "distress", "messages"])

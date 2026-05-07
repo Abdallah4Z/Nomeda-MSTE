@@ -52,7 +52,16 @@ class DeepFaceFERProvider(FERProvider):
                 return FERResponse(emotion="neutral", confidence=0.0, face_detected=False)
 
             if self._fast_mode:
-                return FERResponse(emotion="neutral", confidence=0.5, face_detected=True)
+                face_area = faces[0][2] * faces[0][3]
+                frame_area = frame.shape[0] * frame.shape[1]
+                ratio = face_area / frame_area
+                if ratio > 0.15:
+                    emotion = "anxious"
+                elif ratio > 0.08:
+                    emotion = "neutral"
+                else:
+                    emotion = "calm"
+                return FERResponse(emotion=emotion, confidence=0.5, face_detected=True)
 
             try:
                 from deepface import DeepFace

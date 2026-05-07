@@ -10,7 +10,7 @@ router = APIRouter()
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    last_pong = asyncio.get_event_loop().time()
+    last_pong = asyncio.get_running_loop().time()
     try:
         while True:
             try:
@@ -29,7 +29,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     pong = await asyncio.wait_for(websocket.receive(), timeout=3)
                     if pong.type == "websocket.pong":
-    last_pong = asyncio.get_running_loop().time()
+                        last_pong = asyncio.get_running_loop().time()
                 except asyncio.TimeoutError:
                     if asyncio.get_running_loop().time() - last_pong > 15:
                         break
