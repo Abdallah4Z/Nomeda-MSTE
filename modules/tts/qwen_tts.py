@@ -71,12 +71,16 @@ class QwenTTS:
             torch_dtype = dtype_map.get(self.dtype, torch.bfloat16)
             print(f"[QwenTTS] Loading {self.model_name}...")
 
-            attn = "flash_attention_2"
-            try:
-                import flash_attn
-            except ImportError:
+            import torch
+            cc = torch.cuda.get_device_capability()
+            if cc[0] >= 8:
+                attn = "flash_attention_2"
+            elif cc[0] >= 7:
+                attn = "sdpa"
+                print(f"[QwenTTS] GPU compute {cc[0]}.{cc[1]} — using sdpa attention")
+            else:
                 attn = "eager"
-                print("[QwenTTS] flash_attn not installed, using eager attention")
+                print(f"[QwenTTS] GPU compute {cc[0]}.{cc[1]} — using eager attention")
 
             self._model = Qwen3TTSModel.from_pretrained(
                 self.model_name,
