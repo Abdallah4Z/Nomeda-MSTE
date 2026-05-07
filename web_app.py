@@ -570,14 +570,13 @@ def test_tts(text: str = "Hello, I am your AI therapist. How are you feeling tod
 def debug_tts(text: str = "Hello, I am your AI therapist. How are you feeling today?"):
     """
     Synchronous TTS debug endpoint. Blocks until audio is generated.
-    This lets you see every error immediately in the response.
     """
     if not text:
         return {"status": "error", "message": "No text provided"}
-    if TTS_BACKEND != "gemini":
-        return {"status": "error", "message": f"TTS_BACKEND is '{TTS_BACKEND}', set to 'gemini' to test."}
+    if TTS_BACKEND not in ("gemini", "qwen"):
+        return {"status": "error", "message": f"TTS_BACKEND is '{TTS_BACKEND}', set to 'gemini' or 'qwen' to test."}
 
-    log.info(f" SYNC generating for: {text[:100]}...")
+    log.info(f"SYNC generating TTS for: {text[:100]}...")
     try:
         filepath, mime, audio_b64 = tts_engine.generate_sync(text)
         if filepath:

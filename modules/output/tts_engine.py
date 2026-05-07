@@ -242,11 +242,13 @@ class TTSEngine:
                 return
             self._engine.speak(text, on_done=on_done)
 
-    def generate_sync(self, text):
-        """Synchronous generation — blocks caller thread. Use for debugging only."""
+    def generate_sync(self, text, emotion_hint="neutral"):
+        """Synchronous generation — blocks caller thread."""
         if isinstance(self._engine, GeminiTTSEngine):
             return self._engine.generate_sync(text)
-        log.info("[TTSEngine] generate_sync only available for Gemini backend.")
+        if hasattr(self._engine, 'generate_sync'):
+            return self._engine.generate_sync(text, emotion_hint)
+        log.warning("[TTSEngine] generate_sync not available for this backend.")
         return None, "audio/wav", None
 
     @property
