@@ -19,15 +19,15 @@ class WavLMHubertFusionModel(nn.Module):
         self.num_finetune_layers = num_finetune_layers
         self.dropout = dropout
 
-        wavlm_hidden = self.wavlm.config.hidden_size  # 768
-        hubert_hidden = self.hubert.config.hidden_size  # 768
+        wavlm_hidden = self.wavlm.config.hidden_size
+        hubert_hidden = self.hubert.config.hidden_size
 
         self._setup_selective_finetuning()
 
         self.wavlm_proj = nn.Linear(wavlm_hidden, wavlm_hidden)
         self.hubert_proj = nn.Linear(hubert_hidden, hubert_hidden)
 
-        combined_dim = wavlm_hidden + hubert_hidden  # 1536
+        combined_dim = wavlm_hidden + hubert_hidden
 
         self.attention_gate = nn.Sequential(
             nn.Linear(combined_dim, 2),
@@ -35,17 +35,17 @@ class WavLMHubertFusionModel(nn.Module):
         )
 
         self.fusion_network = nn.Sequential(
-            nn.Linear(combined_dim, wavlm_hidden),       # 1536 -> 768
-            nn.LayerNorm(wavlm_hidden),                    # 768
+            nn.Linear(combined_dim, wavlm_hidden),
+            nn.LayerNorm(wavlm_hidden),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(wavlm_hidden, wavlm_hidden // 2),   # 768 -> 384
-            nn.LayerNorm(wavlm_hidden // 2),               # 384
+            nn.Linear(wavlm_hidden, wavlm_hidden // 2),
+            nn.LayerNorm(wavlm_hidden // 2),
             nn.ReLU(),
             nn.Dropout(dropout / 2)
         )
 
-        self.classifier = nn.Linear(wavlm_hidden // 2, num_classes)  # 384 -> 8
+        self.classifier = nn.Linear(wavlm_hidden // 2, num_classes)
         self._initialize_weights()
 
     def _setup_selective_finetuning(self):
@@ -89,54 +89,74 @@ class WavLMHubertFusionModel(nn.Module):
         hubert_features = torch.mean(hubert_outputs.last_hidden_state, dim=1)
         hubert_proj = self.hubert_proj(hubert_features)
 
-        combined = torch.cat([wavlm_proj, hubert_proj], dim=-1)  # [batch, 1536]
-        gate = self.attention_gate(combined)  # [batch, 2]
+        combined = torch.cat([wavlm_proj, hubert_proj], dim=-1)
+        gate = self.attention_gate(combined)
 
-        wavlm_weight = gate[:, 0:1]  # [batch, 1]
-        hubert_weight = gate[:, 1:2]  # [batch, 1]
+        wavlm_weight = gate[:, 0:1]
+        hubert_weight = gate[:, 1:2]
 
         weighted_wavlm = wavlm_proj * wavlm_weight
         weighted_hubert = hubert_proj * hubert_weight
-        gated_combined = torch.cat([weighted_wavlm, weighted_hubert], dim=-1)  # [batch, 1536]
+        gated_combined = torch.cat([weighted_wavlm, weighted_hubert], dim=-1)
 
-        fused = self.fusion_network(gated_combined)  # [batch, 384]
-        logits = self.classifier(fused)  # [batch, 8]
+        fused = self.fusion_network(gated_combined)
+        logits = self.classifier(fused)
         return logits
 
 
 class SERInference:
-    def __init__(self, model_path="models/ser/wavlm_hubert_optimized_seed456.pth"):
+    def __init__(self, model_path="models/ser/wavlm_hubert_optimized_seed456.pth", fallback_path="models/FINAL_BEST_seed456.pth"):
         self.model_path = model_path
+        self.fallback_path = fallback_path
         self.model = None
         self.feature_extractor = None
         self.label_classes = None
         self.device = DEVICE
         self._load_model()
 
-    def _load_model(self):
-        if not os.path.exists(self.model_path):
-            print(f"[SER] Model not found at {self.model_path}. SER will be unavailable.")
-            return
+    def _try_load(self, path):
+        if not os.path.exists(path):
+            print(f"[SER] Model not found at {path}.")
+            return False
 
         try:
-            checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
-            model_config = checkpoint['model_config']
-            self.label_classes = checkpoint['label_encoder_classes']
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+            self.label_classes = list(checkpoint['label_encoder_classes'])
+            num_classes = len(self.label_classes)
+
+            config = checkpoint.get('model_config')
+            if config is None:
+                hp = checkpoint.get('hyperparameters', {})
+                config = {
+                    'num_classes': num_classes,
+                    'num_finetune_layers': hp.get('num_finetune_layers', 12),
+                    'dropout': hp.get('dropout', 0.3),
+                }
 
             self.feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained("microsoft/wavlm-base-plus")
 
             self.model = WavLMHubertFusionModel(
-                num_classes=model_config['num_classes'],
-                num_finetune_layers=model_config['num_finetune_layers'],
-                dropout=model_config['dropout']
+                num_classes=config['num_classes'],
+                num_finetune_layers=config['num_finetune_layers'],
+                dropout=config['dropout']
             )
             self.model.load_state_dict(checkpoint['model_state_dict'], strict=True)
             self.model.to(self.device)
             self.model.eval()
-            print(f"[SER] Loaded fusion model with classes: {self.label_classes}")
+            print(f"[SER] Loaded fusion model from {path} with classes: {self.label_classes}")
+            return True
         except Exception as e:
-            print(f"[SER] Failed to load fusion model: {e}")
-            self.model = None
+            print(f"[SER] Failed to load model from {path}: {e}")
+            return False
+
+    def _load_model(self):
+        if self._try_load(self.model_path):
+            return
+        print(f"[SER] Primary model failed, trying fallback: {self.fallback_path}")
+        if self._try_load(self.fallback_path):
+            return
+        print(f"[SER] All models failed. SER will be unavailable.")
+        self.model = None
 
     def predict(self, waveform_np, sr=SAMPLE_RATE):
         if self.model is None or self.feature_extractor is None:
@@ -167,9 +187,17 @@ class SERInference:
             with torch.no_grad():
                 logits = self.model(input_values, input_values)
                 probs = torch.softmax(logits, dim=1)
-                confidence, pred_idx = torch.max(probs, dim=1)
-                confidence = confidence.item()
-                pred_idx = pred_idx.item()
+                sorted_probs, sorted_idx = torch.sort(probs[0], descending=True)
+                top_idx = sorted_idx[0].item()
+                top_emotion = self.label_classes[top_idx] if self.label_classes else str(top_idx)
+
+                if top_emotion.lower() == "disgust":
+                    pred_idx = sorted_idx[1].item()
+                    confidence = sorted_probs[1].item()
+                else:
+                    pred_idx = top_idx
+                    confidence = sorted_probs[0].item()
+
                 emotion = self.label_classes[pred_idx] if self.label_classes else str(pred_idx)
             return emotion.capitalize(), confidence
         except Exception as e:

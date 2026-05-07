@@ -1,10 +1,15 @@
 import numpy as np
+import os
 import time
 import threading
+import requests
 from collections import deque
 
-from modules.voice.ser_model import SERInference, NUM_SAMPLES
+from modules.voice.ser_model import NUM_SAMPLES
 from modules.voice.stt_engine import STTEngine
+
+VOICE_API_URL = "http://localhost:8002"
+VOICE_API_KEY = os.environ.get("VOICE_API_KEY", "")
 
 class VoiceEmotionAnalyzer:
     def __init__(self, rate=16000, chunk=1024):
@@ -34,7 +39,6 @@ class VoiceEmotionAnalyzer:
         self.latest_emotion = "Idle"
         self.transcript_lock = threading.Lock()
 
-        self.ser = SERInference()
         import torch
         stt_device = "cuda" if torch.cuda.is_available() else "cpu"
         self.stt = STTEngine(model_size="tiny", device=stt_device)
@@ -172,23 +176,32 @@ class VoiceEmotionAnalyzer:
         return segment, src
 
     def analyze_audio(self):
-        if self.ser.model is None and self.ser.feature_extractor is None:
-            return self.latest_emotion if self.latest_emotion != "Idle" else "Neutral"
-
         segment, src = self._get_audio_segment()
         if segment is None or len(segment) < NUM_SAMPLES * 0.3:
             return self.latest_emotion
 
         try:
-            result = self.ser.predict(segment, sr=self.rate)
-            emotion = result[0] if isinstance(result, tuple) else result
-            confidence = result[1] if isinstance(result, tuple) and len(result) > 1 else 1.0
-            if emotion and emotion not in ["Unavailable", "Error"] and confidence >= 0.25:
-                self.latest_emotion = emotion
-            return self.latest_emotion
+            headers = {}
+            if VOICE_API_KEY:
+                headers["X-API-Key"] = VOICE_API_KEY
+            audio_bytes = (segment * 32768.0).astype(np.int16).tobytes()
+            resp = requests.post(
+                f"{VOICE_API_URL}/ser",
+                files={"audio": ("audio.raw", audio_bytes, "audio/wav")},
+                headers=headers,
+                timeout=2
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                emotion = data.get("emotion", "Neutral")
+                confidence = data.get("confidence", 0.0)
+                if emotion not in ["Unavailable", "Error"] and confidence >= 0.25:
+                    self.latest_emotion = emotion
+                return self.latest_emotion
         except Exception as e:
-            print(f"[Voice] SER error: {e}")
-            return self.latest_emotion
+            print(f"[Voice] API call failed: {e}")
+
+        return self.latest_emotion
 
     def get_latest_transcript(self):
         with self.transcript_lock:

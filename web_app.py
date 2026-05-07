@@ -744,7 +744,7 @@ def session_report(data: dict):
     return {"status": "ok", "report": None, "source": "fallback", "data": summary}
 
 
-def generate_mjpeg():
+async def generate_mjpeg():
     blank = np.zeros((360, 480, 3), dtype=np.uint8)
     blank[:] = (5, 5, 6)
     cv2.putText(blank, "Start a session to begin", (60, 180),
@@ -765,11 +765,11 @@ def generate_mjpeg():
         else:
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + blank_bytes + b'\r\n')
-        time.sleep(0.033)
+        await asyncio.sleep(0.033)
 
 
 @app.get("/video_feed")
-def video_feed():
+async def video_feed():
     return StreamingResponse(generate_mjpeg(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
@@ -778,7 +778,19 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            payload = await asyncio.to_thread(get_state_payload)
+            with state_lock:
+                payload = {
+                    "running": running,
+                    "video_emotion": system_state["video_emotion"],
+                    "voice_emotion": system_state["voice_emotion"],
+                    "stt_text": system_state["stt_text"],
+                    "llm_response": system_state["llm_response"],
+                    "distress": system_state["distress"],
+                    "tts_audio_url": system_state["tts_audio_url"],
+                    "tts_audio_mime": system_state["tts_audio_mime"],
+                    "tts_audio_b64": system_state["tts_audio_b64"],
+                    "tts_generating": system_state["tts_generating"],
+                }
             await websocket.send_json(sanitize_for_json(payload))
             await asyncio.sleep(1)
     except Exception:

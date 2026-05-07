@@ -1,447 +1,282 @@
 'use strict';
-
-/* ── Nomeda — Pixel Art Robot Face ── */
+/* ── Nomeda — Glowing OLED Digital Face ── */
 
 const Face = (function () {
-  var GRID = 16;
-  var SCALE = 6;
-  var SIZE = GRID * SCALE; // 96
+  var W = 280, H = 190;
+  var CYAN = '#00e5ff';
+  var BG   = '#000000';
 
-  var C = {
-    head: '#34d399',
-    headLight: '#6ee7b7',
-    headDark: '#047857',
-    eyeWhite: '#f0fdf4',
-    pupil: '#064e3b',
-    blush: 'rgba(52, 211, 153, 0.25)',
-    mouth: '#064e3b',
-    bg: 'transparent'
+  // Geometry: eye centers, mouth anchor
+  var LEX = 90, REX = 190, EY_BASE = 88;
+  var MX = 140, MY = 152;
+
+  // State params:
+  //   hw  = eye half-width
+  //   hh  = eye half-height
+  //   cr  = corner radius (rounded-rect corners)
+  //   tb  = top-edge bulge: >0 bows upward (arch), <0 bows inward/downward (drooping lid)
+  //   bb  = bottom-edge bulge: >0 bows downward (extra fullness)
+  //   ey  = eye center Y offset from EY_BASE
+  //   mc  = mouth control offset: <0 = smile (ctrl above), >0 = frown (ctrl below)
+  //   mw  = mouth half-width
+  //   ha  = heart alpha  (0-1, for "loved")
+  //   ea  = regular-eye alpha (0-1)
+  var DEFS = {
+    //                       eyes ──────────────────────    mouth ──────  fx ─────
+    normal: { hw:22, hh:20, cr:9,  tb:  0, bb:0, ey: 0,  mc:  0, mw:48, ha:0, ea:1 },
+    happy:  { hw:24, hh: 4, cr:4,  tb: 24, bb:0, ey:-2,  mc:-36, mw:52, ha:0, ea:1 },
+    sad:    { hw:22, hh:16, cr:8,  tb:-18, bb:3, ey: 2,  mc: 36, mw:50, ha:0, ea:1 },
+    loved:  { hw:22, hh:20, cr:9,  tb:  0, bb:0, ey: 0,  mc:-30, mw:46, ha:1, ea:0 }
   };
+  // happy: tiny hh + large positive tb → flat bottom, top arches up strongly = ^ ^
+  // sad:   negative tb → top edge bows downward (heavy eyelid droops over the eye)
+  // loved: same eye shape as normal (replaced by hearts via ha), big smile (mc=-30)
 
-  var EXPRESSIONS = {
-    idle: {
-      browY: 3, browH: 1, browTilt: 0,
-      eyeY: 5, eyeH: 3, eyeOpen: 1,
-      pupilX: 0, pupilY: 0,
-      mouthType: 'flat', blush: false
-    },
-    listening: {
-      browY: 3, browH: 1, browTilt: 0.3,
-      eyeY: 5, eyeH: 3, eyeOpen: 0.9,
-      pupilX: 0, pupilY: -0.3,
-      mouthType: 'smile', blush: false
-    },
-    thinking: {
-      browY: 2, browH: 1, browTilt: -0.7,
-      eyeY: 5, eyeH: 3, eyeOpen: 0.8,
-      pupilX: 0, pupilY: -0.8,
-      mouthType: 'pursed', blush: false
-    },
-    happy: {
-      browY: 3, browH: 1, browTilt: 0.8,
-      eyeY: 6, eyeH: 2, eyeOpen: 0.3,
-      pupilX: 0, pupilY: 0,
-      mouthType: 'bigSmile', blush: true
-    },
-    sad: {
-      browY: 4, browH: 1, browTilt: 0.2,
-      eyeY: 6, eyeH: 2, eyeOpen: 0.4,
-      pupilX: 0, pupilY: 0.5,
-      mouthType: 'frown', blush: false
-    },
-    concerned: {
-      browY: 2, browH: 1, browTilt: -1,
-      eyeY: 5, eyeH: 3, eyeOpen: 0.7,
-      pupilX: 0.3, pupilY: 0,
-      mouthType: 'slightFrown', blush: false
-    },
-    surprised: {
-      browY: 2, browH: 1, browTilt: 1.2,
-      eyeY: 5, eyeH: 4, eyeOpen: 1.5,
-      pupilX: 0, pupilY: 0,
-      mouthType: 'open', blush: false
-    }
-  };
+  var canvas, ctx;
+  var fromS, toS, progress = 1;
+  var animDur = 600;
+  var lastTime = 0;
+  var loopStarted = false;
 
-  var canvas, ctx, off, offCtx;
-  var currentExpr = 'idle';
-  var targetExpr = 'idle';
-  var blend = 1;
-  var blinkTimer = 0;
-  var isBlinking = false;
-  var isTalking = false;
-  var talkPhase = 0;
-  var exprFrom = null, exprTo = null;
+  // Blink state
+  var blinkTimer = 0, blinkProg = 0, blinking = false, blinkPhase = 0;
+  // Talk state
+  var talking = false, talkPhase = 0;
 
+  var exprName = 'normal';
+
+  // ── Math helpers ──
   function lerp(a, b, t) { return a + (b - a) * t; }
-
-  function lerpExpr(nameFrom, nameTo, t) {
-    var f = EXPRESSIONS[nameFrom];
-    var to = EXPRESSIONS[nameTo];
-    if (!f || !to) return EXPRESSIONS[nameTo] || EXPRESSIONS.idle;
-    return {
-      browY: lerp(f.browY, to.browY, t),
-      browH: lerp(f.browH, to.browH, t),
-      browTilt: lerp(f.browTilt, to.browTilt, t),
-      eyeY: lerp(f.eyeY, to.eyeY, t),
-      eyeH: lerp(f.eyeH, to.eyeH, t),
-      eyeOpen: lerp(f.eyeOpen, to.eyeOpen, t),
-      pupilX: lerp(f.pupilX, to.pupilX, t),
-      pupilY: lerp(f.pupilY, to.pupilY, t),
-      mouthType: t < 0.5 ? f.mouthType : to.mouthType,
-      blush: t >= 0.5 ? to.blush : f.blush
-    };
+  function easeInOut(t) { return t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t; }
+  function lerpS(a, b, t) {
+    var o = {};
+    for (var k in a) o[k] = lerp(a[k], b[k], t);
+    return o;
+  }
+  function curState() {
+    return lerpS(fromS, toS, easeInOut(Math.min(1, progress)));
   }
 
-  function exprParams(name) {
-    if (!exprFrom || !exprTo) return Object.assign({}, EXPRESSIONS[name] || EXPRESSIONS.idle);
-    if (name === currentExpr && blend >= 1) return Object.assign({}, EXPRESSIONS[name]);
-    var t = Math.min(1, blend);
-    var eased = t * t * (3 - 2 * t);
-    return lerpExpr(exprFrom, exprTo, eased);
+  // ── Glow draw helpers ──
+  var FILL_PASSES = [[50,0.10],[28,0.22],[14,0.46],[5,0.82],[1,1.00]];
+  var STR_PASSES  = [[50,0.10],[28,0.20],[14,0.44],[5,0.80],[1,1.00]];
+
+  function glowFill(pathFn, alpha) {
+    var am = alpha !== undefined ? alpha : 1;
+    FILL_PASSES.forEach(function(g) {
+      ctx.save();
+      ctx.globalAlpha = g[1] * am;
+      ctx.shadowColor = CYAN;
+      ctx.shadowBlur  = g[0];
+      ctx.fillStyle   = CYAN;
+      pathFn();
+      ctx.fill();
+      ctx.restore();
+    });
   }
 
-  // ── Pixel drawing helpers ──
-  function px(ctx, x, y, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, 1, 1);
+  function glowStroke(pathFn, lw, alpha) {
+    var am = alpha !== undefined ? alpha : 1;
+    var extras = [10, 5, 2, 1, 0];
+    STR_PASSES.forEach(function(g, i) {
+      ctx.save();
+      ctx.globalAlpha = g[1] * am;
+      ctx.shadowColor = CYAN;
+      ctx.shadowBlur  = g[0];
+      ctx.strokeStyle = CYAN;
+      ctx.lineWidth   = lw + extras[i];
+      ctx.lineCap     = 'round';
+      pathFn();
+      ctx.stroke();
+      ctx.restore();
+    });
   }
 
-  function rect(ctx, x, y, w, h, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, w, h);
-  }
+  // ── Eye path: rounded rectangle with optional top/bottom edge bulge ──
+  //
+  //  tb > 0  → top edge bows UP   (arched / happy ^ shape)
+  //  tb < 0  → top edge bows DOWN (lid droops into eye / sad shape)
+  //  bb > 0  → bottom edge bows DOWN (slightly fuller lower lid)
+  //
+  function eyePath(cx, cy, p) {
+    var w = p.hw, h = p.hh, r = p.cr;
+    // clamp corner radius so it never exceeds the half-dimensions
+    r = Math.min(r, w, h);
+    var L = cx - w, R = cx + w, T = cy - h, B = cy + h;
 
-  function hLine(ctx, x, y, w, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, w, 1);
-  }
-
-  function vLine(ctx, x, y, h, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, 1, h);
-  }
-
-  // ── Drawing ──
-  function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.moveTo(L + r, T);
+    // top edge — bulge toward T - tb (above when tb>0, below when tb<0)
+    ctx.quadraticCurveTo(cx, T - p.tb, R - r, T);
+    // top-right corner
+    ctx.quadraticCurveTo(R, T, R, T + r);
+    // right edge
+    ctx.lineTo(R, B - r);
+    // bottom-right corner
+    ctx.quadraticCurveTo(R, B, R - r, B);
+    // bottom edge — bulge downward by bb
+    ctx.quadraticCurveTo(cx, B + p.bb, L + r, B);
+    // bottom-left corner
+    ctx.quadraticCurveTo(L, B, L, B - r);
+    // left edge
+    ctx.lineTo(L, T + r);
+    // top-left corner
+    ctx.quadraticCurveTo(L, T, L + r, T);
     ctx.closePath();
   }
 
-  function drawHead(c) {
-    // Head background
-    c.fillStyle = C.head;
-    roundRect(c, 1, 0, 14, 16, 3);
-    c.fill();
-
-    // Top highlight
-    c.fillStyle = C.headLight;
-    roundRect(c, 3, 1, 10, 3, 1.5);
-    c.fill();
-
-    // Bottom shadow
-    c.fillStyle = C.headDark;
-    hLine(c, 4, 14, 8, C.headDark);
-    px(c, 5, 15, C.headDark);
-    px(c, 10, 15, C.headDark);
-
-    // Ears
-    rect(c, 1, 5, 1, 3, C.headDark);
-    rect(c, 14, 5, 1, 3, C.headDark);
-    px(c, 1, 6, C.head);
-    px(c, 14, 6, C.head);
+  // ── Mouth path ──
+  function mouthPath(mc, mw) {
+    ctx.beginPath();
+    ctx.moveTo(MX - mw, MY);
+    ctx.quadraticCurveTo(MX, MY + mc, MX + mw, MY);
   }
 
-  function drawBrows(c, p) {
-    var browLen = 4;
-    var lx = 4;
-    var rx = 9;
-    var by = Math.round(p.browY);
-    var tilt = p.browTilt;
-
-    var col = C.headDark;
-
-    // Left brow (pixels shift based on tilt)
-    var ly = by;
-    if (tilt > 0) {
-      // tilted up (happy)
-      hLine(c, lx, ly, browLen, col);
-      if (tilt > 0.5) { px(c, lx + 1, ly - 1, col); px(c, lx + 2, ly, col); }
-    } else if (tilt < 0) {
-      // tilted down (angry/concerned)
-      px(c, lx, ly, col);
-      px(c, lx + 1, ly + 1, col);
-      px(c, lx + 2, ly + 1, col);
-      px(c, lx + 3, ly, col);
-    } else {
-      hLine(c, lx, ly, browLen, col);
-    }
-
-    // Right brow
-    var ry = by;
-    if (tilt > 0) {
-      hLine(c, rx, ry, browLen, col);
-      if (tilt > 0.5) { px(c, rx + 1, ry - 1, col); px(c, rx + 2, ry, col); }
-    } else if (tilt < 0) {
-      px(c, rx, ry, col);
-      px(c, rx + 1, ry + 1, col);
-      px(c, rx + 2, ry + 1, col);
-      px(c, rx + 3, ry, col);
-    } else {
-      hLine(c, rx, ry, browLen, col);
-    }
+  // ── Heart path ──
+  function heartPath(cx, cy, s) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + s * 0.90);
+    ctx.bezierCurveTo(cx - s*0.12, cy + s*0.55, cx - s*1.20, cy + s*0.10, cx - s*0.90, cy - s*0.45);
+    ctx.bezierCurveTo(cx - s*0.60, cy - s*1.05, cx,           cy - s*0.65, cx,           cy - s*0.10);
+    ctx.bezierCurveTo(cx,           cy - s*0.65, cx + s*0.60, cy - s*1.05, cx + s*0.90, cy - s*0.45);
+    ctx.bezierCurveTo(cx + s*1.20, cy + s*0.10, cx + s*0.12,  cy + s*0.55, cx,           cy + s*0.90);
+    ctx.closePath();
   }
 
-  function drawEyes(c, p, blinking) {
-    var eyeY = Math.round(p.eyeY);
-    var eyeH = blinking ? 1 : Math.max(1, Math.round(p.eyeH * p.eyeOpen));
-    var isClosed = eyeH <= 1;
+  // ── Render ──
+  function render() {
+    if (!ctx) return;
 
-    // Left eye white
-    if (!isClosed) {
-      rect(c, 4, eyeY, 3, eyeH, C.eyeWhite);
-      // Right eye white
-      rect(c, 9, eyeY, 3, eyeH, C.eyeWhite);
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, W, H);
+
+    var p  = curState();
+    var ey = EY_BASE + p.ey;
+
+    // Blink: shrink hh toward 0 (eye closes to a flat line)
+    var bs  = 1 - blinkProg;
+    var bHH = p.hh * bs;
+    var ep  = Object.assign({}, p, { hh: bHH, cr: Math.min(p.cr, bHH) });
+
+    // Talk: oscillate mouth control point
+    var mc = talking ? p.mc + Math.sin(talkPhase) * 11 : p.mc;
+
+    // Regular eyes
+    if (p.ea > 0.01) {
+      glowFill(function() { eyePath(LEX, ey, ep); }, p.ea);
+      glowFill(function() { eyePath(REX, ey, ep); }, p.ea);
     }
 
-    // Pupils
-    if (!isClosed && eyeH >= 2) {
-      var px = 5 + Math.round(p.pupilX);
-      var py = eyeY + Math.round(eyeH / 2) - 1 + Math.round(p.pupilY);
-      py = Math.max(eyeY, Math.min(eyeY + eyeH - 1, py));
-      px(c, px, py, C.pupil);
-      px(c, px + 4, py, C.pupil);
+    // Hearts (loved)
+    if (p.ha > 0.01) {
+      glowFill(function() { heartPath(LEX, ey - 2, 19); }, p.ha);
+      glowFill(function() { heartPath(REX, ey - 2, 19); }, p.ha);
     }
 
-    // Closed eye lines
-    if (isClosed) {
-      var lineY = eyeY;
-      if (p.mouthType === 'frown' || p.mouthType === 'slightFrown') {
-        // sad closed eyes (slanted down)
-        px(c, 4, lineY - 1, C.headDark);
-        hLine(c, 5, lineY, 2, C.headDark);
-        px(c, 5, lineY + 1, C.headDark);
-        
-        px(c, 9, lineY - 1, C.headDark);
-        hLine(c, 10, lineY, 2, C.headDark);
-        px(c, 10, lineY + 1, C.headDark);
-      } else {
-        // happy closed eyes (arc up)
-        hLine(c, 4, lineY, 3, C.headDark);
-        hLine(c, 9, lineY, 3, C.headDark);
-        if (p.mouthType === 'bigSmile') {
-          px(c, 5, lineY - 1, C.headDark);
-          px(c, 10, lineY - 1, C.headDark);
-        }
+    // Mouth
+    glowStroke(function() { mouthPath(mc, p.mw); }, 4);
+  }
+
+  // ── Update ──
+  function update(dt) {
+    if (progress < 1) progress = Math.min(1, progress + dt / animDur);
+
+    // Auto-blink every ~3.5–6 s
+    if (!blinking) {
+      blinkTimer += dt;
+      if (blinkTimer > 3500 + Math.random() * 2500) {
+        blinking = true; blinkTimer = 0; blinkPhase = 0;
       }
     }
-
-    // Under-eye line
-    if (!isClosed && eyeH > 1) {
-      hLine(c, 4, eyeY + eyeH, 3, C.headDark);
-      hLine(c, 9, eyeY + eyeH, 3, C.headDark);
+    if (blinking) {
+      blinkPhase += dt;
+      blinkProg = Math.max(0, Math.sin(Math.PI * blinkPhase / 160));
+      if (blinkPhase >= 160) { blinking = false; blinkProg = 0; }
     }
+
+    if (talking) talkPhase += dt * 0.009;
   }
 
-  function drawMouth(c, p, talking, phase) {
-    var col = C.mouth;
-
-    if (talking) {
-      // Animate mouth opening/closing
-      var open = Math.abs(Math.sin(phase)) * 1.5 + 0.5;
-      var mh = Math.round(Math.min(3, open));
-      rect(c, 6, 12 - mh + 1, 4, mh, col);
-      // teeth
-      if (mh > 1) { hLine(c, 7, 12 - mh + 2, 2, C.eyeWhite); }
-      return;
-    }
-
-    switch (p.mouthType) {
-      case 'flat':
-        hLine(c, 6, 12, 4, col);
-        break;
-
-      case 'smile':
-        hLine(c, 6, 12, 4, col);
-        px(c, 5, 11, col);
-        px(c, 10, 11, col);
-        break;
-
-      case 'bigSmile':
-        rect(c, 5, 11, 6, 2, col);
-        hLine(c, 6, 10, 4, col);
-        px(c, 7, 9, col);
-        px(c, 8, 9, col);
-        break;
-
-      case 'frown':
-        hLine(c, 6, 12, 4, col);
-        px(c, 5, 13, col);
-        px(c, 10, 13, col);
-        break;
-
-      case 'pursed':
-        rect(c, 6, 12, 4, 2, col);
-        px(c, 7, 11, col);
-        px(c, 8, 11, col);
-        break;
-
-      case 'open':
-        rect(c, 6, 11, 4, 3, col);
-        hLine(c, 7, 12, 2, C.headDark);
-        break;
-
-      case 'slightFrown':
-        hLine(c, 6, 12, 4, col);
-        break;
-    }
-  }
-
-  function drawBlush(c, p) {
-    if (!p.blush) return;
-    px(c, 3, 9, C.blush);
-    px(c, 4, 9, C.blush);
-    px(c, 3, 10, C.blush);
-    px(c, 12, 9, C.blush);
-    px(c, 11, 9, C.blush);
-    px(c, 12, 10, C.blush);
-  }
-
-  function render() {
-    if (!offCtx || !ctx) return;
-
-    var oc = offCtx;
-    oc.clearRect(0, 0, GRID, GRID);
-
-    var faceExpr = targetExpr;
-    if (blend < 1 && exprFrom && exprTo) {
-      faceExpr = '__blend__';
-    }
-
-    var p = exprParams(targetExpr);
-
-    drawHead(oc);
-    drawBlush(oc, p);
-    drawBrows(oc, p);
-    drawEyes(oc, p, isBlinking);
-    drawMouth(oc, p, isTalking, talkPhase);
-
-    // Draw to visible canvas
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, SIZE, SIZE);
-    ctx.drawImage(off, 0, 0, SIZE, SIZE);
-
-    // Pixel grid overlay (subtle)
-    ctx.strokeStyle = 'rgba(0,0,0,0.05)';
-    ctx.lineWidth = 1;
-    for (var i = 0; i <= GRID; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * SCALE, 0);
-      ctx.lineTo(i * SCALE, SIZE);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, i * SCALE);
-      ctx.lineTo(SIZE, i * SCALE);
-      ctx.stroke();
-    }
-  }
-
-  function update() {
-    // Blink timer
-    blinkTimer++;
-    if (!isBlinking && blinkTimer > 120 + Math.random() * 100) {
-      isBlinking = true;
-      blinkTimer = 0;
-    }
-    if (isBlinking && blinkTimer > 6) {
-      isBlinking = false;
-      blinkTimer = 0;
-    }
-
-    // Talking animation
-    if (isTalking) {
-      talkPhase += 0.2;
-    }
-
-    // Expression transition
-    if (blend < 1) {
-      blend += 0.06;
-      if (blend > 1) { blend = 1; currentExpr = targetExpr; }
-    }
-
-  }
-
-  function loop() {
-    update();
+  function loop(ts) {
+    var dt = Math.min(ts - lastTime, 50);
+    lastTime = ts;
+    update(dt);
     render();
     requestAnimationFrame(loop);
+  }
+
+  // ── Control wiring ──
+  function wireControls() {
+    function bind(id, expr) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('click', function() { api.setExpression(expr); });
+    }
+    bind('faceNormalBtn', 'idle');
+    bind('faceHappyBtn',  'happy');
+    bind('faceSadBtn',    'sad');
+    bind('faceLovedBtn',  'loved');
+
+    var sl  = document.getElementById('faceAnimSlider');
+    var lbl = document.getElementById('faceAnimVal');
+    if (sl) {
+      sl.addEventListener('input', function() {
+        animDur = +sl.value;
+        if (lbl) lbl.textContent = sl.value + 'ms';
+      });
+    }
+  }
+
+  function setActiveBtn(name) {
+    var map = { normal:'faceNormalBtn', happy:'faceHappyBtn', sad:'faceSadBtn', loved:'faceLovedBtn' };
+    document.querySelectorAll('.face-btn').forEach(function(b) { b.classList.remove('active'); });
+    var id = map[name];
+    if (id) { var el = document.getElementById(id); if (el) el.classList.add('active'); }
   }
 
   // ── Public API ──
   var api = {};
 
-  api.init = function (canvasEl) {
-    canvas = canvasEl;
-    ctx = canvas.getContext('2d');
-    off = document.createElement('canvas');
-    off.width = GRID;
-    off.height = GRID;
-    offCtx = off.getContext('2d');
-
-    targetExpr = 'idle';
-    currentExpr = 'idle';
-    exprFrom = 'idle';
-    exprTo = 'idle';
-
-    loop();
-  };
-
-  api.setExpression = function (name) {
-    name = name || 'idle';
-    if (!EXPRESSIONS[name]) name = 'idle';
-    if (name === targetExpr) return;
-    exprFrom = currentExpr;
-    exprTo = name;
-    targetExpr = name;
-    blend = 0;
-  };
-
-  api.setEmotion = function (emotion, distress) {
-    var d = Number(distress) || 0;
-    var e = (emotion || '').toLowerCase();
-    if (e === 'happy' || e === 'calm') {
-      api.setExpression('happy');
-    } else if (e === 'sad' || e === 'anxious') {
-      api.setExpression('sad');
-    } else if (e === 'angry') {
-      api.setExpression('concerned');
-    } else if (e === 'surprise') {
-      api.setExpression('surprised');
-    } else {
-      if (d > 60) api.setExpression('concerned');
-      else api.setExpression('listening');
+  api.init = function(el) {
+    canvas = el;
+    ctx = canvas.getContext('2d', { alpha: false });
+    fromS = Object.assign({}, DEFS.normal);
+    toS   = Object.assign({}, DEFS.normal);
+    progress = 1;
+    exprName = 'normal';
+    wireControls();
+    setActiveBtn('normal');
+    if (!loopStarted) {
+      loopStarted = true;
+      requestAnimationFrame(function(ts) { lastTime = ts; loop(ts); });
     }
   };
 
-  api.startTalking = function () {
-    isTalking = true;
-    talkPhase = 0;
-    api.setExpression('idle');
+  var ALIASES = {
+    idle:'normal', listening:'normal', thinking:'normal',
+    happy:'happy', sad:'sad', concerned:'sad', surprised:'normal', loved:'loved'
   };
 
-  api.stopTalking = function () {
-    isTalking = false;
-    talkPhase = 0;
+  api.setExpression = function(name) {
+    var sn = ALIASES[name] || name;
+    if (!DEFS[sn]) sn = 'normal';
+    if (sn === exprName && progress >= 1) return;
+    fromS = curState();
+    toS   = Object.assign({}, DEFS[sn]);
+    progress = 0;
+    exprName = sn;
+    setActiveBtn(sn);
   };
+
+  api.setEmotion = function(emotion, distress) {
+    var e = (emotion || '').toLowerCase();
+    if (e === 'happy' || e === 'calm')       api.setExpression('happy');
+    else if (e === 'sad' || e === 'anxious') api.setExpression('sad');
+    else if (e === 'angry')                  api.setExpression('concerned');
+    else                                     api.setExpression('idle');
+  };
+
+  api.startTalking = function() { talking = true;  talkPhase = 0; };
+  api.stopTalking  = function() { talking = false; };
 
   return api;
 })();

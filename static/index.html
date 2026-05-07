@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nomeda — AI Therapist</title>
   <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <div class="ambient">
@@ -70,6 +71,10 @@
         <span class="status-dot" id="headerStatusDot"></span>
         <span class="status-text" id="headerStatusText">Connecting</span>
       </div>
+      <div class="voice-badge" id="voiceBadge">
+        <span class="voice-badge-dot"></span>
+        <span id="serLabel">Voice: --</span>
+      </div>
       <div class="timer">
         <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"/>
@@ -104,7 +109,7 @@
         </button>
       </div>
       <div class="pip-body">
-        <img id="pipFeed" src="/video_feed" alt="Live feed" style="display:none;">
+        <video id="pipFeed" autoplay muted playsinline style="display:none;"></video>
         <div class="pip-placeholder" id="pipPlaceholder">
           <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
@@ -115,7 +120,20 @@
     </div>
 
     <div class="face-area">
-      <canvas id="robotFace" width="96" height="96"></canvas>
+      <div class="face-controls">
+        <div class="face-btns">
+          <button class="face-btn active" id="faceNormalBtn">Normal</button>
+          <button class="face-btn" id="faceHappyBtn">Happy</button>
+          <button class="face-btn" id="faceSadBtn">Sad</button>
+          <button class="face-btn" id="faceLovedBtn">Loved</button>
+        </div>
+        <label class="face-slider-row">
+          <span>Anim</span>
+          <input type="range" id="faceAnimSlider" min="100" max="2000" step="100" value="600">
+          <span class="dur-val" id="faceAnimVal">600ms</span>
+        </label>
+      </div>
+      <canvas id="robotFace" width="280" height="190"></canvas>
     </div>
 
     <div class="chat-messages" id="chatMessages">
@@ -135,6 +153,8 @@
           <line x1="6" y1="20" x2="6" y2="14"/>
         </svg>
         Emotion Timeline
+        <span class="timeline-live" id="tlFaceLabel" style="margin-left:auto;font-size:0.65rem;color:var(--text-dim);">Face: --</span>
+        <span class="timeline-live" id="tlVoiceLabel" style="margin-left:0.5rem;font-size:0.65rem;color:var(--text-dim);">Voice: --</span>
         <svg class="icon-sm chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9"/>
         </svg>

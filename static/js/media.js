@@ -21,9 +21,11 @@ async function initCamera() {
     state.browserCanvas.height = 240;
     await v.play();
 
-    $('pipFeed').src = '/video_feed?' + Date.now();
-    $('pipFeed').style.display = '';
+    var pipFeed = $('pipFeed');
+    pipFeed.srcObject = stream;
+    pipFeed.style.display = '';
     $('pipPlaceholder').style.display = 'none';
+    pipFeed.play().catch(function () {});
 
     if (state.frameTimer) clearInterval(state.frameTimer);
     state.frameTimer = setInterval(sendFrame, FRAME_INTERVAL);
@@ -109,6 +111,97 @@ function initVoiceRecord(btnEl, onResult) {
   btnEl.onpointerleave = stop;
 }
 
+// ── Continuous Audio Streaming for Live SER ──
+var audioCtx = null;
+var audioStream = null;
+var audioUploadTimer = null;
+
+async function initLiveAudio() {
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var src = audioCtx.createMediaStreamSource(audioStream);
+    var processor = audioCtx.createScriptProcessor(4096, 1, 1);
+    processor.onaudioprocess = function (e) {
+      var input = e.inputBuffer.getChannelData(0);
+      var buf = new ArrayBuffer(input.length * 2);
+      var view = new Int16Array(buf);
+      for (var i = 0; i < input.length; i++) {
+        var s = Math.max(-1, Math.min(1, input[i]));
+        view[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      var fd = new FormData();
+      fd.append('audio', new Blob([buf], { type: 'audio/wav' }), 'chunk.raw');
+      fetch('/api/browser-audio', { method: 'POST', body: fd }).catch(function () {});
+    };
+    src.connect(processor);
+    processor.connect(audioCtx.destination);
+    console.log('[Audio] Live SER streaming started');
+  } catch (e) {
+    console.warn('[Audio] Live mic not available:', e);
+  }
+}
+
+function stopLiveAudio() {
+  if (audioStream) { audioStream.getTracks().forEach(function (t) { t.stop(); }); audioStream = null; }
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+}
+var tlChart = null;
+
+function initTimelineChart() {
+  var canvas = document.getElementById('timelineChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (tlChart) { tlChart.destroy(); tlChart = null; }
+  tlChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'Face', data: [], borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, spanGaps: false },
+        { label: 'Voice', data: [], borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.1)', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false, spanGaps: false }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#7a7a8c', font: { size: 10 } } } },
+      scales: {
+        x: { display: true, ticks: { color: '#555566', font: { size: 9 }, maxTicksLimit: 8 } },
+        y: { min: 0, max: 7, ticks: { stepSize: 1, color: '#555566', font: { size: 9 },
+              callback: function(v) { var m = {0:'Angry',1:'Fear',2:'Disgust',3:'Sad',4:'Neutral',5:'Calm',6:'Happy',7:'Surprised'}; return m[v] || v; }
+            }
+        }
+      },
+      animation: { duration: 200 }
+    }
+  });
+}
+
+var emotionValue = { 'angry':0,'anger':0,'fear':1,'disgust':2,'sad':3,'neutral':4,'calm':5,'happy':6,'surprised':7,
+                     'Angry':0,'Anger':0,'Fear':1,'Disgust':2,'Sad':3,'Neutral':4,'Calm':5,'Happy':6,'Surprised':7,
+                     'Anxious':1, 'No Face Detected':null, 'No Frame':null, 'Idle':null };
+
+function updateTimeline(voiceEmotion, faceEmotion, distress) {
+  if (!tlChart) return;
+  var now = new Date().toLocaleTimeString();
+  var v = emotionValue[voiceEmotion] !== undefined ? emotionValue[voiceEmotion] : null;
+  var f = emotionValue[faceEmotion] !== undefined ? emotionValue[faceEmotion] : null;
+  tlChart.data.labels.push(now);
+  tlChart.data.datasets[0].data.push(f);
+  tlChart.data.datasets[1].data.push(v);
+  if (tlChart.data.labels.length > 40) {
+    tlChart.data.labels.shift();
+    tlChart.data.datasets[0].data.shift();
+    tlChart.data.datasets[1].data.shift();
+  }
+  tlChart.update();
+
+  // Update live labels in timeline toggle
+  var fl = document.getElementById('tlFaceLabel');
+  var vl = document.getElementById('tlVoiceLabel');
+  if (fl) fl.textContent = 'Face: ' + (faceEmotion && faceEmotion !== 'Idle' ? faceEmotion : '--');
+  if (vl) vl.textContent = 'Voice: ' + (voiceEmotion && voiceEmotion !== 'Idle' ? voiceEmotion : '--');
+}
+
 // ── WebSocket ──
 function connectWS() {
   if (state.ws) try { state.ws.close(); } catch (e) { /* ignore */ }
@@ -119,6 +212,7 @@ function connectWS() {
   ws.onopen = function () {
     state.connected = true;
     setHeaderStatus(true);
+    initTimelineChart();
   };
 
   ws.onmessage = function (e) {
@@ -133,9 +227,25 @@ function connectWS() {
           distress: Number(d.distress) || 0
         });
         if (state.emotionHistory.length > 200) state.emotionHistory.splice(0, 50);
-        if (d.video_emotion && d.video_emotion !== 'Idle' && typeof Face !== 'undefined') {
-          Face.setEmotion(d.video_emotion, d.distress);
+
+        // Update live SER badge
+        var serLabel = document.getElementById('serLabel');
+        if (serLabel && d.voice_emotion && d.voice_emotion !== 'Idle') {
+          serLabel.textContent = 'Voice: ' + d.voice_emotion;
+          serLabel.parentElement.classList.add('active');
         }
+
+        // Robot face: use video emotion, fall back to voice emotion
+        var faceEmotion = d.video_emotion;
+        if (!faceEmotion || faceEmotion === 'Idle' || faceEmotion === 'No Frame') {
+          faceEmotion = d.voice_emotion;
+        }
+        if (faceEmotion && faceEmotion !== 'Idle' && typeof Face !== 'undefined') {
+          Face.setEmotion(faceEmotion, d.distress);
+        }
+
+        // Update timeline chart
+        updateTimeline(d.voice_emotion, d.video_emotion, d.distress);
       }
     } catch (_) { /* ignore */ }
   };

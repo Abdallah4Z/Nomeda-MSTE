@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', function () {
     localStorage.removeItem('nomeda_skip_checkin');
   }
   var skip = localStorage.getItem('nomeda_skip_checkin') === 'true';
-  if (skip) showChat();
+  if (skip) { showChat(); startSessionMedia(); }
   else showCheckin();
 });
 
@@ -76,11 +76,15 @@ function skipCheckin() {
   localStorage.setItem('nomeda_skip_checkin', 'true');
   state.session.checkin = null;
   showChat();
+  startSessionMedia();
 }
 
 function showChat() {
   showScreen('screen-chat');
-  initChat();
+  initFace();
+  initChatInput();
+  initChatVoice();
+  initTimeline();
 }
 
 function showSummary(data) {
@@ -124,54 +128,33 @@ async function submitCheckin() {
     state.session.id = 'sess_' + Date.now();
   }
 
-  state.session.isRunning = true;
   showChat();
+  startSessionMedia();
 }
 
-// ── Checkin Voice ──
-function initCheckinVoice() {
-  initVoiceRecord($('checkinVoiceBtn'), async function (blob) {
-    var fd = new FormData();
-    fd.append('audio', blob, 'voice.webm');
+// ── Session Media Init (camera + WS + audio + timer) ──
+// Called from every path that enters the chat screen
+async function startSessionMedia() {
+  if (!state.session.id) {
     try {
-      var res = await fetch('/api/voice-note', { method: 'POST', body: fd });
+      var res = await fetch('/api/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
       if (res.ok) {
         var data = await res.json();
-        if (data.transcript) {
-          var ta = $('checkinText');
-          ta.value = (ta.value + ' ' + data.transcript).trim();
-        }
-        var st = $('checkinVoiceStatus');
-        st.textContent = data.emotion ? 'Voice: ' + data.emotion : 'Voice note added';
-        st.classList.add('visible');
+        state.session.id = data.session_id || 'sess_' + Date.now();
       }
     } catch (e) {
-      $('checkinVoiceStatus').textContent = 'Voice note recorded';
-      $('checkinVoiceStatus').classList.add('visible');
+      state.session.id = 'sess_' + Date.now();
     }
-  });
-}
-
-// ── Chat ──
-async function initChat() {
-  var checkin = state.session.checkin;
-  if (checkin && checkin.emotion) {
-    addMessage({
-      role: 'user',
-      text: checkin.text || 'Feeling ' + checkin.emotion,
-      type: 'checkin',
-      emotion: checkin.emotion,
-      timestamp: new Date().toISOString()
-    });
   }
-
+  state.session.isRunning = true;
   initCamera();
+  initLiveAudio();
   connectWS();
   startTimer();
-  initFace();
-  initChatInput();
-  initChatVoice();
-  initTimeline();
 
   $('endBtn').onclick = endSession;
   $('summaryBtn').onclick = function () {
@@ -305,6 +288,9 @@ function initChatVoice() {
 function initTimeline() {
   $('timelineToggle').onclick = function () {
     $('timelineBar').classList.toggle('open');
+    if ($('timelineBar').classList.contains('open') && tlChart) {
+      setTimeout(function () { tlChart.resize(); }, 50);
+    }
   };
 }
 
@@ -361,6 +347,7 @@ async function endSession() {
 
   hideTyping();
   stopCamera();
+  stopLiveAudio();
   stopTimer();
   if (state.ws) { state.ws.close(); state.ws = null; }
 
@@ -406,6 +393,7 @@ function calcStats() {
 // ── Cleanup ──
 window.addEventListener('beforeunload', function () {
   stopCamera();
+  stopLiveAudio();
   if (state.recordingStream) state.recordingStream.getTracks().forEach(function (t) { t.stop(); });
   if (state.ws) state.ws.close();
 });
