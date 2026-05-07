@@ -258,7 +258,7 @@
             <h1 class="text-2xl font-bold tracking-tight text-white">
               Multimodal <span class="text-gradient">AI Monitor</span>
             </h1>
-            <p class="text-xs mt-0.5" style="color: var(--foreground-muted);">Real-time emotion, voice & biometric analysis</p>
+            <p class="text-xs mt-0.5" style="color: var(--foreground-muted);">Real-time emotion & voice analysis</p>
           </div>
           <div class="flex items-center gap-3">
             <div id="connectionPill" class="connection-pill">
@@ -291,7 +291,6 @@
           <div class="system-status flex-wrap animate-in delay-1">
             <div class="system-status-item"><span id="statusVideo" class="status-dot idle"></span><span>Video</span></div>
             <div class="system-status-item"><span id="statusVoice" class="status-dot idle"></span><span>Voice</span></div>
-            <div class="system-status-item"><span id="statusBio" class="status-dot idle"></span><span>Biometrics</span></div>
             <div class="system-status-item"><span id="statusAI" class="status-dot idle"></span><span>AI Fusion</span></div>
             <div class="flex-1"></div>
             <div id="sessionBadge" class="status-pill" style="background: rgba(107, 114, 128, 0.1); border: 1px solid rgba(107, 114, 128, 0.2); color: #9CA3AF;">
@@ -368,10 +367,9 @@
 
           <div class="animate-in delay-3">
             <div class="section-title">Live Metrics</div>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div class="glass-card metric-box"><div class="metric-header"><div class="metric-title"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>Video Emotion</div><span id="trendVideo" class="metric-trend stable">&#x25CF;</span></div><div id="metricVideo" class="metric-data">Idle</div><canvas id="sparkVideo" class="metric-sparkline" width="200" height="28"></canvas></div>
               <div class="glass-card metric-box"><div class="metric-header"><div class="metric-title"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>Voice Emotion</div><span id="trendVoice" class="metric-trend stable">&#x25CF;</span></div><div id="metricVoice" class="metric-data">Idle</div><canvas id="sparkVoice" class="metric-sparkline" width="200" height="28"></canvas></div>
-              <div class="glass-card metric-box"><div class="metric-header"><div class="metric-title"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>Biometrics</div><span id="trendBio" class="metric-trend stable">&#x25CF;</span></div><div id="metricBio" class="metric-data">Idle</div><canvas id="sparkBio" class="metric-sparkline" width="200" height="28"></canvas></div>
             </div>
           </div>
 

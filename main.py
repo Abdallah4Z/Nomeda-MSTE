@@ -3,7 +3,6 @@ import time
 import json
 from modules.video.video_emotion import VideoEmotionAnalyzer
 from modules.voice.voice_emotion import VoiceEmotionAnalyzer
-from modules.biometrics.heart_rate_processor import BiometricProcessor
 from core.model.inference import FusionAgent
 from modules.output.tts_engine import TTSEngine
 from modules.output.session_logger import SessionLogger
@@ -12,7 +11,6 @@ from modules.output.session_logger import SessionLogger
 system_state = {
     "video_emotion": "Starting...",
     "voice_arousal": "Starting...",
-    "biometric_data": "Starting...",
     "ai_recommendation": {"distress": 0, "recommendation": "Initializing..."}
 }
 
@@ -44,20 +42,7 @@ def voice_worker():
     finally:
         analyzer.close()
 
-def biometric_worker():
-    global system_state
-    import os
-    source = os.getenv("BIOMETRIC_SOURCE", "auto").strip()
-    processor = BiometricProcessor(source=source)
-    print("[Thread] Biometric Modality Started")
-    try:
-        while True:
-            system_state["biometric_data"] = processor.analyze_biometrics()
-            time.sleep(1.0)
-    except Exception as e:
-        print(f"[Thread] Biometric Modality Error: {e}")
-    finally:
-        processor.close()
+
 
 def ai_fusion_worker():
     global system_state
@@ -70,9 +55,8 @@ def ai_fusion_worker():
         try:
             # We poll the fusion every 3-5 seconds to avoid over-requesting LLM
             recommendation = agent.fuse_inputs(
-                system_state["voice_arousal"],
-                system_state["biometric_data"],
-                system_state["video_emotion"]
+                system_state["video_emotion"],
+                system_state["voice_arousal"]
             )
             # Try parsing if it's a JSON string from LLM
             if isinstance(recommendation, str):
@@ -111,7 +95,6 @@ def main():
     threads = [
         threading.Thread(target=video_worker, daemon=True),
         threading.Thread(target=voice_worker, daemon=True),
-        threading.Thread(target=biometric_worker, daemon=True),
         threading.Thread(target=ai_fusion_worker, daemon=True)
     ]
     

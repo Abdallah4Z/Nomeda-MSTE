@@ -21,7 +21,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 load_dotenv()
 
-# Resolve model path — works both locally and inside Docker
+# Resolve model path
+
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 MODEL_PATH = str(_PROJECT_ROOT / "LLM" / "model" / "therapist-gemma-q4_K_M.gguf")
 INDEX_DIR = str(_PROJECT_ROOT / "LLM" / "faiss_index")
@@ -83,7 +85,7 @@ class FusionAgent:
         self.system_prompt = (
             "You are a compassionate and professional AI therapist. "
             "You listen carefully, show empathy, and provide thoughtful, evidence-based responses. "
-            "You have access to real-time multimodal inputs: face emotion, voice emotion, biometrics, and what the user just said. "
+            "You have access to real-time multimodal inputs: face emotion, voice emotion, and what the user just said. "
             "Respond as a warm, caring therapist in FIRST PERSON (e.g., 'I can see you're...', 'I'm here with you...'). "
             "Keep your response short (1-2 sentences). "
             "Also estimate a Distress Level from 0 to 100."
@@ -91,7 +93,7 @@ class FusionAgent:
 
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", self.system_prompt),
-            ("human", "Face emotion: {face_emotion}\nVoice emotion: {voice_emotion}\nBiometrics: {biometric}\nUser said: {stt_text}\n\nOutput STRICT JSON: {{\"distress\": <0-100>, \"response\": \"your therapist text here\"}}")
+            ("human", "Face emotion: {face_emotion}\nVoice emotion: {voice_emotion}\nUser said: {stt_text}\n\nOutput STRICT JSON: {{\"distress\": <0-100>, \"response\": \"your therapist text here\"}}")
         ])
 
     def _warmup_local_llm(self):
@@ -164,7 +166,7 @@ class FusionAgent:
             print(f"[FusionAgent] RAG retrieval error: {e}")
             return []
 
-    def _build_local_prompt(self, face_emotion, voice_emotion, biometric, stt_text, context_chunks) -> str:
+    def _build_local_prompt(self, face_emotion, voice_emotion, stt_text, context_chunks) -> str:
         system = (
             "You are a compassionate and professional AI therapist. "
             "Respond as a warm, caring therapist in FIRST PERSON. "
@@ -177,7 +179,6 @@ class FusionAgent:
         user = (
             f"Face emotion: {face_emotion}\n"
             f"Voice emotion: {voice_emotion}\n"
-            f"Biometrics: {biometric}\n"
             f"User said: {stt_text if stt_text else '(no speech detected)'}\n\n"
             f'Output STRICT JSON: {{"distress": <0-100>, "response": "your therapist text here"}}'
         )
@@ -204,13 +205,13 @@ class FusionAgent:
             distress = 20
         return {"distress": distress, "response": content}
 
-    def fuse_inputs(self, face_emotion, voice_emotion, biometric, stt_text=""):
+    def fuse_inputs(self, face_emotion, voice_emotion, stt_text=""):
         # ── PRIMARY: Local model ──
         if self._local_llm:
             try:
                 rag_query = f"{face_emotion} {voice_emotion} {stt_text}".strip()
                 context_chunks = self._retrieve_context(rag_query) if rag_query else []
-                prompt = self._build_local_prompt(face_emotion, voice_emotion, biometric, stt_text, context_chunks)
+                prompt = self._build_local_prompt(face_emotion, voice_emotion, stt_text, context_chunks)
                 response = self._local_llm(
                     prompt,
                     max_tokens=MAX_TOKENS,
@@ -231,7 +232,6 @@ class FusionAgent:
                 response = chain.invoke({
                     "face_emotion": face_emotion,
                     "voice_emotion": voice_emotion,
-                    "biometric": biometric,
                     "stt_text": stt_text if stt_text else "(no speech detected)"
                 })
                 return self._parse_json(response.content)
@@ -246,11 +246,11 @@ class FusionAgent:
             distress = 20
         return {"distress": distress, "response": "I'm here with you. How are you feeling right now?"}
 
-    def fuse_inputs_fast(self, face_emotion, voice_emotion, biometric, stt_text="", max_tokens=128):
-        return self.fuse_inputs(face_emotion, voice_emotion, biometric, stt_text)
+    def fuse_inputs_fast(self, face_emotion, voice_emotion, stt_text="", max_tokens=128):
+        return self.fuse_inputs(face_emotion, voice_emotion, stt_text)
 
 
 if __name__ == "__main__":
     agent = FusionAgent()
-    result = agent.fuse_inputs("Happy", "Neutral", "HR: 75", "I feel good today")
+    result = agent.fuse_inputs("Happy", "Neutral", "I feel good today")
     print(f"Fusion Result: {result}")

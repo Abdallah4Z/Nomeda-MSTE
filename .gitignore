@@ -47,6 +47,7 @@ labs/
 # Generated session data
 data/sessions/*.csv
 data/video_sessions/*
+data/tts/*
 data/raw/*
 data/processed/*
 

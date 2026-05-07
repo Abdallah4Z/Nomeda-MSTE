@@ -13,7 +13,7 @@ class SessionLogger:
     def _init_csv(self):
         with open(self.filename, mode='w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(["timestamp", "video_emotion", "voice_emotion", "biometric_data", "distress_level", "llm_response", "stt_text"])
+            writer.writerow(["timestamp", "video_emotion", "voice_emotion", "distress_level", "llm_response", "stt_text"])
 
     def log_event(self, state):
         """Logs the current system state to CSV."""
@@ -21,7 +21,6 @@ class SessionLogger:
             timestamp = datetime.now().isoformat()
             video = state.get("video_emotion", "N/A") or "N/A"
             voice = state.get("voice_emotion", state.get("voice_arousal", "N/A")) or "N/A"
-            biometric = state.get("biometric_data", "N/A") or "N/A"
             stt = state.get("stt_text", "") or ""
             
             distress = state.get("distress", 0)
@@ -40,7 +39,7 @@ class SessionLogger:
 
             with open(self.filename, mode='a', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow([timestamp, video, voice, biometric, distress, rec, stt])
+                writer.writerow([timestamp, video, voice, distress, rec, stt])
         except Exception as e:
             print(f"Logging Error: {e}")
 
@@ -49,7 +48,6 @@ if __name__ == "__main__":
     logger.log_event({
         "video_emotion": "Interested",
         "voice_emotion": "Neutral",
-        "biometric_data": "HR: 72, EDA: 100",
         "distress": 10,
         "llm_response": "Maintain state",
         "stt_text": "I feel good"

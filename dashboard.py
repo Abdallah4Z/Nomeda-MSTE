@@ -35,7 +35,7 @@ if latest_log:
                 if not df.empty:
                     latest = df.iloc[-1]
                     col1.metric("Video Emotion", latest['video_emotion'])
-                    col2.metric("Voice Arousal", latest['voice_arousal'])
+                    col2.metric("Voice Emotion", latest['voice_emotion'])
                     col3.metric("Distress Score", f"{latest['distress_level']}/100")
 
                     st.write("### 💬 Live AI Recommendation")

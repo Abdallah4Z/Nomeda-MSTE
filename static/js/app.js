@@ -5,7 +5,6 @@ let sessionStartTime = null;
 let timerInterval = null;
 let sparkVideo = [];
 let sparkVoice = [];
-let sparkBio = [];
 let browserVideo = null;
 let browserCanvas = null;
 let browserStream = null;
@@ -226,7 +225,7 @@ function updateGauge(distress) {
 }
 
 function updateSystemStatus(running) {
-  ['Video', 'Voice', 'Bio', 'AI'].forEach(mod => {
+  ['Video', 'Voice', 'AI'].forEach(mod => {
     const el = document.getElementById('status' + mod);
     el.className = running ? 'status-dot active' : 'status-dot idle';
   });
@@ -356,18 +355,14 @@ function updateUI(data) {
   else { badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>Idle'; badge.style.cssText = 'background: rgba(107, 114, 128, 0.1); border: 1px solid rgba(107, 114, 128, 0.2); color: #9CA3AF;'; }
   document.getElementById('metricVideo').textContent = data.video_emotion || 'Idle';
   document.getElementById('metricVoice').textContent = data.voice_emotion || 'Idle';
-  document.getElementById('metricBio').textContent = data.biometric_data || 'Idle';
   if (isRunning) {
     sparkVideo.push(data.video_emotion === 'Idle' ? 0 : Math.random() * 50 + 20);
     sparkVoice.push(data.voice_emotion === 'Idle' ? 0 : Math.random() * 40 + 30);
-    sparkBio.push(data.biometric_data === 'Idle' ? 70 : 70 + Math.random() * 20 - 10);
     if (sparkVideo.length > 20) sparkVideo.shift();
     if (sparkVoice.length > 20) sparkVoice.shift();
-    if (sparkBio.length > 20) sparkBio.shift();
   }
   drawSparkline('sparkVideo', sparkVideo, 'rgb(0, 255, 136)');
   drawSparkline('sparkVoice', sparkVoice, 'rgb(34, 211, 238)');
-  drawSparkline('sparkBio', sparkBio, 'rgb(239, 68, 68)');
   const camDot = document.getElementById('camDot'), camStatus = document.getElementById('camStatus');
   if (isRunning) { camDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse'; camStatus.textContent = 'Analyzing'; }
   else { camDot.className = 'w-1.5 h-1.5 rounded-full bg-red-500'; camStatus.textContent = 'Idle'; }
@@ -428,7 +423,7 @@ async function startSession() {
     const res = await fetch('/api/start', { method: 'POST' });
     const json = await res.json();
     console.log('Start:', json);
-    sparkVideo = []; sparkVoice = []; sparkBio = [];
+    sparkVideo = []; sparkVoice = [];
     document.getElementById('videoPlaceholder').classList.add('hidden');
     document.getElementById('videoFeed').style.display = '';
     document.getElementById('videoFeed').src = '/video_feed?' + Date.now();

@@ -9,16 +9,6 @@ import pyaudio
 import threading
 from queue import Queue
 
-# Add Emotion Detection folder to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "Emotion Detection"))
-
-try:
-    from EmotionDetection import analyze_faces_and_draw, get_face_mesh
-    REAL_MODEL_AVAILABLE = True
-except Exception as e:
-    print(f"Real model failed to load: {e}")
-    REAL_MODEL_AVAILABLE = False
-
 st.set_page_config(page_title="AI Therapist", layout="wide", page_icon="🧠")
 
 st.markdown("""<style>
@@ -100,8 +90,7 @@ st.markdown("""<style>
     }
 </style>""", unsafe_allow_html=True)
 
-st.title("🧠 AI Therapist - Powered by DeepFace")
-st.caption(f"Using: {'Real DeepFace Model' if REAL_MODEL_AVAILABLE else 'Lightweight Fallback'}")
+st.title("🧠 AI Therapist")
 st.markdown("---")
 
 # Initialize session state
@@ -166,8 +155,6 @@ if st.session_state.running:
     except:
         pass
 
-    face_mesh = get_face_mesh() if REAL_MODEL_AVAILABLE else None
-
     # Try LLM
     try:
         from core.model.inference import FusionAgent
@@ -215,24 +202,12 @@ if st.session_state.running:
             if speaking:
                 _ = voice_queue.get()
 
-            # Use REAL model if available
-            if REAL_MODEL_AVAILABLE and face_mesh:
-                try:
-                    frame, states = analyze_faces_and_draw(frame, face_mesh)
-                    current_state = states[0] if states else "Neutral"
-                except Exception as e:
-                    current_state = "Neutral"
-                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    faces = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml').detectMultiScale(gray, 1.3, 5)
-                    for (x, y, w, h) in faces:
-                        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 255), 2)
-            else:
-                current_state = "Neutral"
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                faces = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml').detectMultiScale(gray, 1.3, 5)
-                for (x, y, w, h) in faces:
-                    cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 255), 2)
-                    cv2.putText(frame, "Neutral", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            current_state = "Neutral"
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml').detectMultiScale(gray, 1.3, 5)
+            for (x, y, w, h) in faces:
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 255), 2)
+                cv2.putText(frame, "Neutral", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
             # Overlay stats on frame
             elapsed = time.time() - start_time
@@ -273,7 +248,7 @@ if st.session_state.running:
 
                 if HAS_LLM and fusion:
                     try:
-                        rec = fusion.fuse_inputs(voice_input, "N/A", current_state)
+                        rec = fusion.fuse_inputs(current_state, voice_input)
                         if isinstance(rec, str):
                             start_idx = rec.find("{")
                             if start_idx >= 0:
