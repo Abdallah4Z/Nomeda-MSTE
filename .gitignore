@@ -60,3 +60,4 @@ tests/hardware_tests/*.wav
 static/js/three.min.js
 static/js/tailwind.min.js
 static/js/chart.min.js
+models/
