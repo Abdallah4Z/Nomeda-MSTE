@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nomeda — Admin</title>
+  <style>
+    :root {
+      --bg: #0c0c14;
+      --bg-sidebar: #0a0a10;
+      --bg-card: #11111d;
+      --bg-elevated: #1a1a2e;
+      --surface: rgba(255, 255, 255, 0.03);
+      --surface-hover: rgba(255, 255, 255, 0.06);
+      --border: rgba(255, 255, 255, 0.06);
+      --border-hover: rgba(255, 255, 255, 0.1);
+      --text: #dfdfe9;
+      --text-muted: #787891;
+      --text-dim: #515166;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.2);
+      --accent-light: #a5b4fc;
+      --cyan: #22d3ee;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --danger: #f87171;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --easing: cubic-bezier(0.16, 1, 0.3, 1);
+      --sidebar-w: 220px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    input, select, textarea, button { font-family: inherit; }
+    ::selection { background: var(--accent); color: white; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .icon { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+    .icon-sm { width: 1rem; height: 1rem; }
+    .icon-lg { width: 1.5rem; height: 1.5rem; }
+
+    /* ── Layout ── */
+    .app { display: flex; height: 100vh; }
+
+    .sidebar {
+      width: var(--sidebar-w); flex-shrink: 0; background: var(--bg-sidebar);
+      border-right: 1px solid var(--border); display: flex; flex-direction: column;
+      z-index: 10;
+    }
+    .sidebar-brand {
+      display: flex; align-items: center; gap: 0.625rem; padding: 1.125rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-brand svg { width: 1.5rem; height: 1.5rem; color: var(--accent); }
+    .sidebar-brand span {
+      font-weight: 700; font-size: 0.9375rem;
+      background: linear-gradient(135deg, var(--accent-light), var(--cyan));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+
+    .sidebar-nav { flex: 1; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.25rem; }
+    .nav-item {
+      display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.75rem;
+      border-radius: var(--radius-sm); cursor: pointer; transition: all 0.15s var(--easing);
+      color: var(--text-muted); font-size: 0.8125rem; font-weight: 500; border: none; background: none;
+      width: 100%; text-align: left;
+    }
+    .nav-item:hover { background: var(--surface-hover); color: var(--text); }
+    .nav-item.active { background: rgba(99, 102, 241, 0.08); color: var(--accent-light); }
+    .nav-item .icon { opacity: 0.7; }
+    .nav-item.active .icon { opacity: 1; }
+
+    .sidebar-footer {
+      padding: 0.75rem; border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.6875rem; color: var(--text-dim);
+    }
+    .status-dot { width: 0.375rem; height: 0.375rem; border-radius: 50%; flex-shrink: 0; }
+    .status-dot.online { background: var(--success); box-shadow: 0 0 6px rgba(52, 211, 153, 0.4); }
+
+    /* ── Main ── */
+    .main { flex: 1; overflow-y: auto; padding: 1.5rem 2rem; }
+    .main::-webkit-scrollbar { width: 4px; }
+    .main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem;
+    }
+    .page-header h1 { font-size: 1.375rem; font-weight: 700; letter-spacing: -0.02em; }
+    .page-header p { font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.125rem; }
+
+    /* ── Tabs ── */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.25rem; margin-bottom: 1rem;
+    }
+    .card-title {
+      font-size: 0.8125rem; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem;
+    }
+    .card-grid { display: grid; gap: 1rem; }
+    .card-grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .card-grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .card-grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+    .stat-card {
+      padding: 1.125rem; border-radius: var(--radius-sm);
+      background: var(--surface); border: 1px solid var(--border);
+    }
+    .stat-card .stat-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+    .stat-card .stat-header .icon { color: var(--accent); }
+    .stat-card .stat-value { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .stat-card .stat-label { font-size: 0.6875rem; color: var(--text-muted); font-weight: 600; margin-top: 0.125rem; }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    th {
+      text-align: left; padding: 0.625rem 0.75rem; font-weight: 600; color: var(--text-muted);
+      font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--border);
+      color: var(--text); font-size: 0.8125rem;
+    }
+    tr:hover td { background: var(--surface); }
+    tr:last-child td { border-bottom: none; }
+
+    .badge {
+      display: inline-flex; align-items: center; padding: 0.125rem 0.5rem;
+      border-radius: 999px; font-size: 0.6875rem; font-weight: 600;
+    }
+    .badge-green { background: rgba(52, 211, 153, 0.1); color: var(--success); }
+    .badge-yellow { background: rgba(251, 191, 36, 0.1); color: var(--warning); }
+    .badge-red { background: rgba(248, 113, 113, 0.1); color: var(--danger); }
+    .badge-blue { background: rgba(99, 102, 241, 0.1); color: var(--accent-light); }
+    .badge-gray { background: var(--surface); color: var(--text-muted); }
+
+    /* ── Form ── */
+    .form-group { margin-bottom: 1rem; }
+    .form-group label {
+      display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
+      margin-bottom: 0.375rem; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 0.625rem 0.75rem; border-radius: var(--radius-sm);
+      background: var(--surface); border: 1.5px solid var(--border);
+      color: var(--text); font-size: 0.8125rem; outline: none;
+      transition: all 0.2s var(--easing);
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      border-color: var(--accent); background: var(--surface-hover);
+    }
+    .form-group select { cursor: pointer; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-hint { font-size: 0.6875rem; color: var(--text-dim); margin-top: 0.25rem; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.375rem;
+      padding: 0.5rem 1rem; border-radius: var(--radius-sm); font-weight: 600; font-size: 0.8125rem;
+      border: none; cursor: pointer; transition: all 0.15s var(--easing);
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: #5558e6; }
+    .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--surface-hover); }
+    .btn-success { background: rgba(52, 211, 153, 0.12); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.2); }
+    .btn-danger { background: rgba(248, 113, 113, 0.1); color: var(--danger); border: 1px solid rgba(248, 113, 113, 0.2); }
+    .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.75rem; }
+
+    /* ── Log viewer ── */
+    .log-viewer {
+      background: #06060c; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 0.75rem; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem;
+      line-height: 1.6; max-height: 400px; overflow-y: auto; white-space: pre-wrap;
+    }
+    .log-viewer::-webkit-scrollbar { width: 4px; }
+    .log-viewer::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .log-line { padding: 0.125rem 0; }
+    .log-info { color: var(--text-muted); }
+    .log-warn { color: var(--warning); }
+    .log-error { color: var(--danger); }
+    .log-debug { color: var(--text-dim); }
+    .log-time { color: #515166; margin-right: 0.75rem; }
+
+    .log-filters { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .log-filter-btn {
+      padding: 0.25rem 0.625rem; border-radius: 999px; font-size: 0.6875rem; font-weight: 600;
+      border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer;
+      transition: all 0.15s var(--easing);
+    }
+    .log-filter-btn:hover { background: var(--surface-hover); color: var(--text); }
+    .log-filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+    /* ── Model cards ── */
+    .model-card {
+      padding: 1rem; border-radius: var(--radius-sm);
+      background: var(--surface); border: 1px solid var(--border);
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .model-icon {
+      width: 2.5rem; height: 2.5rem; border-radius: var(--radius-sm); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .model-icon.ready { background: rgba(52, 211, 153, 0.1); color: var(--success); }
+    .model-icon.loading { background: rgba(251, 191, 36, 0.1); color: var(--warning); }
+    .model-icon.error { background: rgba(248, 113, 113, 0.1); color: var(--danger); }
+    .model-info { flex: 1; }
+    .model-name { font-size: 0.875rem; font-weight: 600; }
+    .model-desc { font-size: 0.6875rem; color: var(--text-muted); margin-top: 0.125rem; }
+    .model-status { flex-shrink: 0; }
+
+    /* ── History detail ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(7, 7, 13, 0.7); backdrop-filter: blur(8px);
+      align-items: center; justify-content: center; padding: 2rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.5rem; max-width: 640px; width: 100%; max-height: 80vh; overflow-y: auto;
+      animation: modalIn 0.25s var(--easing);
+    }
+    @keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .modal-header h2 { font-size: 1.125rem; font-weight: 700; }
+    .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0.25rem; }
+
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 3rem 1rem; color: var(--text-dim); text-align: center;
+    }
+    .empty-state .icon { width: 2.5rem; height: 2.5rem; opacity: 0.3; margin-bottom: 0.75rem; }
+    .empty-state p { font-size: 0.875rem; }
+
+    .loader {
+      display: inline-block; width: 1.25rem; height: 1.25rem;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 200;
+      padding: 0.75rem 1rem; border-radius: var(--radius-sm);
+      background: var(--bg-card); border: 1px solid var(--border);
+      font-size: 0.8125rem; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      animation: toastIn 0.3s var(--easing); display: none;
+    }
+    .toast.show { display: flex; align-items: center; gap: 0.5rem; }
+    .toast.success { border-color: rgba(52, 211, 153, 0.3); color: var(--success); }
+    .toast.error { border-color: rgba(248, 113, 113, 0.3); color: var(--danger); }
+
+    /* ── Search input ── */
+    .search-input {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 0.75rem; border-radius: var(--radius-sm);
+      background: var(--surface); border: 1.5px solid var(--border); max-width: 280px;
+      transition: all 0.2s var(--easing);
+    }
+    .search-input:focus-within { border-color: var(--accent); background: var(--surface-hover); }
+    .search-input input {
+      flex: 1; background: none; border: none; color: var(--text); font-size: 0.8125rem; outline: none;
+    }
+    .search-input input::placeholder { color: var(--text-dim); }
+    .search-input .icon { color: var(--text-dim); }
+
+    @media (max-width: 768px) {
+      .sidebar { width: 56px; }
+      .sidebar-brand span, .nav-item span { display: none; }
+      .nav-item { justify-content: center; padding: 0.75rem; }
+      .main { padding: 1rem; }
+      .card-grid-2, .card-grid-3, .card-grid-4 { grid-template-columns: 1fr; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 4C9.373 4 4 9.373 4 16s5.373 12 12 12 12-5.373 12-12S22.627 4 16 4z"/>
+          <path d="M12 14a2 2 0 100-4 2 2 0 000 4z"/>
+          <path d="M20 14a2 2 0 100-4 2 2 0 000 4z"/>
+          <path d="M16 20c-2.5 0-4-1.5-4-3h8c0 1.5-1.5 3-4 3z"/>
+        </svg>
+        <span>Nomeda</span>
+      </div>
+      <nav class="sidebar-nav" id="sidebarNav">
+        <button class="nav-item active" data-tab="dashboard">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+          </svg>
+          <span>Dashboard</span>
+        </button>
+        <button class="nav-item" data-tab="config">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <span>Config</span>
+        </button>
+        <button class="nav-item" data-tab="history">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span>History</span>
+        </button>
+        <button class="nav-item" data-tab="logs">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          <span>Logs</span>
+        </button>
+        <button class="nav-item" data-tab="models">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+          </svg>
+          <span>Models</span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="status-dot online" id="sysStatusDot"></span>
+        <span id="sysStatusText">Online</span>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main" id="mainContent">
+      <!-- ── Dashboard ── -->
+      <div class="tab-content active" id="tab-dashboard">
+        <div class="page-header">
+          <div>
+            <h1>Dashboard</h1>
+            <p>System overview and recent activity</p>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="refreshAll()">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Refresh
+          </button>
+        </div>
+        <div class="card-grid card-grid-4" id="dashStats">
+          <div class="stat-card"><div class="stat-header"><span class="stat-label">Status</span><span class="badge badge-green" id="dashStatus">Checking...</span></div><div class="stat-value" style="font-size:1rem" id="dashStatusDetail">Connecting</div></div>
+          <div class="stat-card"><div class="stat-header"><span class="stat-label">Sessions</span><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></div><div class="stat-value" id="dashSessions">—</div></div>
+          <div class="stat-card"><div class="stat-header"><span class="stat-label">Avg Distress</span><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></div><div class="stat-value" id="dashAvgDistress">—</div></div>
+          <div class="stat-card"><div class="stat-header"><span class="stat-label">Models</span><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg></div><div class="stat-value" style="font-size:1rem" id="dashModels">—</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Recent Sessions</div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Time</th><th>Duration</th><th>Emotion</th><th>Distress</th><th>Messages</th></tr></thead><tbody id="dashRecentTable"><tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:2rem">No recent sessions</td></tr></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Config ── -->
+      <div class="tab-content" id="tab-config">
+        <div class="page-header">
+          <div>
+            <h1>Configuration</h1>
+            <p>System settings and preferences</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="saveConfig()">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save
+          </button>
+        </div>
+        <div class="card">
+          <div class="card-title">LLM Settings</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Inference Mode</label>
+              <select id="cfgLlmMode"><option value="local">Local (Gemma GGUF)</option><option value="api">API (Groq)</option></select>
+              <div class="form-hint">Local mode requires the GGUF model file</div>
+            </div>
+            <div class="form-group">
+              <label>Groq API Key</label>
+              <input type="password" id="cfgGroqKey" placeholder="gsk_..." value="••••••••">
+              <div class="form-hint">Required for API mode</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Max Tokens</label>
+              <input type="number" id="cfgMaxTokens" value="256">
+            </div>
+            <div class="form-group">
+              <label>Temperature</label>
+              <input type="number" id="cfgTemp" value="0.7" step="0.1" min="0" max="2">
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">TTS Settings</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Backend</label>
+              <select id="cfgTtsBackend"><option value="gemini">Gemini Flash TTS</option><option value="pyttsx3">pyttsx3 (offline)</option></select>
+            </div>
+            <div class="form-group">
+              <label>Distress Threshold</label>
+              <input type="number" id="cfgTtsThreshold" value="0" min="0" max="100">
+              <div class="form-hint">Minimum distress level to trigger TTS</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Camera</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Source</label>
+              <select id="cfgCamSource"><option value="browser">Browser Camera</option><option value="device">Device Camera</option></select>
+            </div>
+            <div class="form-group">
+              <label>Device ID</label>
+              <input type="number" id="cfgCamId" value="0" min="0">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── History ── -->
+      <div class="tab-content" id="tab-history">
+        <div class="page-header">
+          <div>
+            <h1>Session History</h1>
+            <p>Browse and review past sessions</p>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="loadHistory()">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Reload
+          </button>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap">
+            <div class="search-input">
+              <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="historySearch" placeholder="Search sessions..." oninput="filterHistory()">
+            </div>
+            <select id="historyFilter" style="padding:0.5rem 0.75rem;border-radius:var(--radius-sm);background:var(--surface);border:1.5px solid var(--border);color:var(--text);font-size:0.8125rem;outline:none" onchange="filterHistory()">
+              <option value="all">All Emotions</option>
+              <option value="Happy">Happy</option><option value="Neutral">Neutral</option><option value="Sad">Sad</option>
+              <option value="Anxious">Anxious</option><option value="Angry">Angry</option><option value="Calm">Calm</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Date</th><th>Time</th><th>Duration</th><th>Emotion</th><th>Distress</th><th>Messages</th><th></th></tr></thead><tbody id="historyTable"><tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:2rem"><span class="loader" style="margin-right:0.5rem"></span>Loading...</td></tr></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Logs ── -->
+      <div class="tab-content" id="tab-logs">
+        <div class="page-header">
+          <div>
+            <h1>System Logs</h1>
+            <p>Real-time and historical logs</p>
+          </div>
+          <div style="display:flex;gap:0.5rem">
+            <button class="btn btn-secondary btn-sm" onclick="loadLogs()">Refresh</button>
+            <button class="btn btn-secondary btn-sm" onclick="clearLogs()">Clear</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="log-filters">
+            <button class="log-filter-btn active" data-level="all" onclick="setLogFilter('all',this)">All</button>
+            <button class="log-filter-btn" data-level="info" onclick="setLogFilter('info',this)">Info</button>
+            <button class="log-filter-btn" data-level="warn" onclick="setLogFilter('warn',this)">Warnings</button>
+            <button class="log-filter-btn" data-level="error" onclick="setLogFilter('error',this)">Errors</button>
+          </div>
+          <div class="log-viewer" id="logViewer">
+            <div class="log-line log-info"><span class="log-time">[--:--:--]</span> Waiting for logs...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Models ── -->
+      <div class="tab-content" id="tab-models">
+        <div class="page-header">
+          <div>
+            <h1>Models</h1>
+            <p>Manage AI model components</p>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="loadModels()">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Reload
+          </button>
+        </div>
+        <div class="card">
+          <div class="card-title">Inference Models</div>
+          <div style="display:flex;flex-direction:column;gap:0.75rem" id="modelsContainer">
+            <div class="empty-state"><p>Loading models...</p></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Session Detail Modal -->
+  <div class="modal-overlay" id="sessionModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="sessionModalTitle">Session Detail</h2>
+        <button class="modal-close" onclick="closeSessionModal()">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div id="sessionModalBody"><p style="color:var(--text-muted)">Loading...</p></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="/static/admin/js/app.js"></script>
+</body>
+</html>

@@ -19,24 +19,13 @@ from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "Emotion Detection"))
-
 from modules.video.video_emotion import VideoEmotionAnalyzer
 from modules.video.cv_detector import detect_and_annotate
 from modules.voice.voice_emotion import VoiceEmotionAnalyzer
-from modules.biometrics.heart_rate_processor import BiometricProcessor
 from core.model.inference import FusionAgent
 from modules.output.tts_engine import TTSEngine, TTS_BACKEND
 from modules.output.session_logger import SessionLogger
 from modules.video.video_processor import VideoSessionProcessor
-
-try:
-    from EmotionDetection import analyze_faces_and_draw, get_face_mesh
-    REAL_MODEL_AVAILABLE = True
-    print("[Startup] Advanced emotion model (DeepFace) available.")
-except Exception as e:
-    print(f"[Startup] Advanced emotion model unavailable: {e}")
-    REAL_MODEL_AVAILABLE = False
 
 app = FastAPI(title="Multimodal Emotion Monitor", version="2.0")
 
@@ -85,7 +74,6 @@ def sanitize_for_json(obj):
 system_state = {
     "video_emotion": "Idle",
     "voice_emotion": "Idle",
-    "biometric_data": "Idle",
     "stt_text": "",
     "llm_response": "Start a session to begin monitoring.",
     "distress": 0,
@@ -121,9 +109,6 @@ else:
 video_analyzer = VideoEmotionAnalyzer(cap=cap, open_default=False, fast_mode=True)
 voice_analyzer = VoiceEmotionAnalyzer()
 
-BIOMETRIC_SOURCE = os.getenv("BIOMETRIC_SOURCE", "auto").strip()
-biometric_processor = BiometricProcessor(source=BIOMETRIC_SOURCE)
-
 fusion_agent = FusionAgent()
 tts_engine = TTSEngine()
 video_processor = VideoSessionProcessor()
@@ -155,7 +140,6 @@ def get_state_payload():
             "running": running,
             "video_emotion": system_state["video_emotion"],
             "voice_emotion": system_state["voice_emotion"],
-            "biometric_data": system_state["biometric_data"],
             "stt_text": system_state["stt_text"],
             "llm_response": system_state["llm_response"],
             "distress": system_state["distress"],
@@ -198,15 +182,6 @@ def video_worker():
 
 def display_worker():
     global latest_display_frame
-    face_mesh = None
-    if REAL_MODEL_AVAILABLE:
-        try:
-            face_mesh = get_face_mesh()
-            print("[DisplayWorker] FaceMesh initialized for fast display overlay.")
-        except Exception as e:
-            print(f"[DisplayWorker] Failed to init FaceMesh: {e}")
-            face_mesh = None
-
     while True:
         if not running:
             time.sleep(0.1)
@@ -221,20 +196,10 @@ def display_worker():
             with state_lock:
                 emotion_text = system_state.get("video_emotion", "")
 
-            if REAL_MODEL_AVAILABLE and face_mesh is not None:
-                try:
-                    from EmotionDetection import draw_face_mesh_fast
-                    annotated = draw_face_mesh_fast(annotated, face_mesh, emotion_text)
-                except Exception:
-                    try:
-                        annotated, _ = detect_and_annotate(annotated, emotion_text=emotion_text)
-                    except Exception:
-                        pass
-            else:
-                try:
-                    annotated, _ = detect_and_annotate(annotated, emotion_text=emotion_text)
-                except Exception:
-                    pass
+            try:
+                annotated, _ = detect_and_annotate(annotated, emotion_text=emotion_text)
+            except Exception:
+                pass
 
             with frame_lock:
                 latest_display_frame = annotated
@@ -255,22 +220,6 @@ def voice_worker():
         except Exception as e:
             print(f"[VoiceWorker] Error: {e}")
         time.sleep(0.5)
-
-
-def biometric_worker():
-    global system_state
-    while True:
-        if not running:
-            time.sleep(0.5)
-            continue
-        try:
-            data = biometric_processor.analyze_biometrics()
-            with state_lock:
-                system_state["biometric_data"] = data
-        except Exception as e:
-            with state_lock:
-                system_state["biometric_data"] = f"Error: {e}"
-        time.sleep(1.0)
 
 
 def _on_tts_done(filepath, mime_type, audio_b64):
@@ -302,11 +251,10 @@ def ai_fusion_worker():
             with state_lock:
                 face_emotion = system_state["video_emotion"]
                 voice_emotion = system_state["voice_emotion"]
-                biometric = system_state["biometric_data"]
 
             stt_text = voice_analyzer.get_latest_transcript()
 
-            result = fusion_agent.fuse_inputs(face_emotion, voice_emotion, biometric, stt_text)
+            result = fusion_agent.fuse_inputs(face_emotion, voice_emotion, stt_text)
             if not isinstance(result, dict):
                 result = {"distress": 50, "response": str(result)}
 
@@ -346,7 +294,7 @@ def ai_fusion_worker():
         time.sleep(3)
 
 
-for target in [frame_reader, display_worker, video_worker, voice_worker, biometric_worker, ai_fusion_worker]:
+for target in [frame_reader, display_worker, video_worker, voice_worker, ai_fusion_worker]:
     threading.Thread(target=target, daemon=True).start()
 
 
@@ -364,7 +312,7 @@ def process_video_in_thread(session_id, video_path):
         stt_text = results.get("stt_text", "")
 
         print(f"[VideoSession {session_id}] Running LLM fusion...")
-        fusion_result = fusion_agent.fuse_inputs_fast(fer_emotion, ser_emotion, "N/A", stt_text)
+        fusion_result = fusion_agent.fuse_inputs_fast(fer_emotion, ser_emotion, stt_text)
         if not isinstance(fusion_result, dict):
             fusion_result = {"distress": 50, "response": str(fusion_result)}
 
@@ -432,17 +380,16 @@ def read_root():
 def start_session():
     global running, current_logger
     if running:
-        return {"status": "already_running"}
+        return {"status": "already_running", "session_id": current_logger.filename if current_logger else "unknown"}
     running = True
     current_logger = SessionLogger()
     with state_lock:
         system_state["video_emotion"] = "Starting..."
         system_state["voice_emotion"] = "Starting..."
-        system_state["biometric_data"] = "Starting..."
         system_state["llm_response"] = "Initializing..."
         system_state["distress"] = 0
     voice_analyzer.clear_transcript()
-    return {"status": "started"}
+    return {"status": "started", "session_id": current_logger.filename}
 
 
 @app.post("/api/stop")
@@ -452,7 +399,6 @@ def stop_session():
     with state_lock:
         system_state["video_emotion"] = "Idle"
         system_state["voice_emotion"] = "Idle"
-        system_state["biometric_data"] = "Idle"
         system_state["llm_response"] = "Session stopped. Start again when ready."
         system_state["distress"] = 0
         system_state["stt_text"] = ""
@@ -460,6 +406,135 @@ def stop_session():
         system_state["tts_audio_b64"] = None
         system_state["tts_generating"] = False
     return {"status": "stopped"}
+
+
+@app.post("/api/session/end")
+def session_end():
+    global running, current_logger
+    running = False
+    with state_lock:
+        system_state["video_emotion"] = "Idle"
+        system_state["voice_emotion"] = "Idle"
+        system_state["llm_response"] = "Session ended."
+        system_state["distress"] = 0
+        system_state["stt_text"] = ""
+    return {"status": "ended"}
+
+
+@app.post("/api/chat")
+def chat_message(data: dict):
+    message = data.get("message", "")
+    if not message:
+        return JSONResponse(content={"error": "empty_message"}, status_code=400)
+
+    with state_lock:
+        face_emotion = system_state["video_emotion"]
+        voice_emotion = system_state["voice_emotion"]
+
+    stt_text = voice_analyzer.get_latest_transcript() or ""
+
+    try:
+        result = fusion_agent.fuse_inputs(face_emotion, voice_emotion, stt_text)
+        if not isinstance(result, dict):
+            result = {"distress": 50, "response": str(result)}
+
+        distress = result.get("distress", 0)
+        response = result.get("response", "I'm here with you.")
+
+        with state_lock:
+            system_state["llm_response"] = response
+            system_state["distress"] = distress
+
+        tts_url = None
+        tts_b64 = None
+        if response and distress >= int(os.getenv("TTS_DISTRESS_THRESHOLD", "0")):
+            try:
+                filepath, mime, audio_b64 = tts_engine.generate_sync(response)
+                if filepath:
+                    _on_tts_done(filepath, mime, audio_b64)
+                    tts_url = f"/api/tts/latest?t={int(time.time())}"
+                    tts_b64 = audio_b64
+            except Exception as e:
+                print(f"[Chat] TTS error: {e}")
+
+        return {
+            "response": response,
+            "distress": distress,
+            "face_emotion": face_emotion,
+            "voice_emotion": voice_emotion,
+            "tts_audio_url": tts_url,
+            "tts_audio_b64": tts_b64,
+            "rag_sources": []
+        }
+    except Exception as e:
+        print(f"[Chat] Error: {e}")
+        return {
+            "response": "I'm here with you. Tell me more about how you're feeling.",
+            "distress": 30,
+            "face_emotion": "Neutral",
+            "voice_emotion": "Neutral",
+            "rag_sources": []
+        }
+
+
+@app.post("/api/voice-note")
+async def voice_note(audio: UploadFile = File(...)):
+    content = await audio.read()
+    if not content:
+        return JSONResponse(content={"error": "empty_audio"}, status_code=400)
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        out_path = tmp_path + ".raw"
+        cmd = [
+            "ffmpeg", "-y", "-i", tmp_path,
+            "-f", "s16le", "-acodec", "pcm_s16le",
+            "-ar", "16000", "-ac", "1",
+            out_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, timeout=10)
+        transcript = ""
+        emotion = "Neutral"
+
+        if result.returncode == 0 and os.path.exists(out_path):
+            raw_audio = np.fromfile(out_path, dtype=np.int16).astype(np.float32) / 32768.0
+            if len(raw_audio) > 16000 * 0.5:
+                try:
+                    voice_analyzer.feed_browser_audio(raw_audio)
+                    time.sleep(1.5)
+                    transcript = voice_analyzer.get_latest_transcript() or ""
+                    e = voice_analyzer.analyze_audio()
+                    if e and e not in ("Idle", "Error", "Unavailable"):
+                        emotion = e
+                except Exception as ex:
+                    print(f"[VoiceNote] Processing error: {ex}")
+            try:
+                os.remove(out_path)
+            except OSError:
+                pass
+
+        return {"transcript": transcript, "emotion": emotion}
+    except Exception as e:
+        print(f"[VoiceNote] Error: {e}")
+        return {"transcript": "", "emotion": "Unavailable"}
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+
+@app.post("/api/session/send-summary")
+def send_summary(data: dict):
+    email = data.get("email", "")
+    summary = data.get("summary", {})
+    print(f"[Email] Would send summary to {email}: {str(summary)[:200]}...")
+    return {"status": "ok", "to": email, "message": "Summary queued for delivery"}
 
 
 @app.get("/api/tts/latest")
@@ -656,7 +731,29 @@ def get_history():
         return SafeJSONResponse(content={"error": str(e)})
 
 
+@app.post("/api/session/report")
+def session_report(data: dict):
+    summary = data.get("summary", {})
+    try:
+        report = fusion_agent.generate_report(summary)
+        if report:
+            return {"status": "ok", "report": report, "source": "llm"}
+    except Exception as e:
+        print(f"[Report] LLM failed: {e}")
+
+    return {"status": "ok", "report": None, "source": "fallback", "data": summary}
+
+
 def generate_mjpeg():
+    blank = np.zeros((360, 480, 3), dtype=np.uint8)
+    blank[:] = (5, 5, 6)
+    cv2.putText(blank, "Start a session to begin", (60, 180),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 100, 110), 1)
+    cv2.putText(blank, "Camera feed will appear here", (50, 220),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (70, 70, 80), 1)
+    _, blank_jpg = cv2.imencode('.jpg', blank, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+    blank_bytes = blank_jpg.tobytes()
+
     while True:
         with frame_lock:
             frame = latest_display_frame if latest_display_frame is not None else latest_raw_frame
@@ -665,6 +762,9 @@ def generate_mjpeg():
             if ret:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        else:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + blank_bytes + b'\r\n')
         time.sleep(0.033)
 
 
@@ -690,7 +790,6 @@ def shutdown_event():
     if cap and cap.isOpened():
         cap.release()
     voice_analyzer.close()
-    biometric_processor.close()
     cv2.destroyAllWindows()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

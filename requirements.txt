@@ -16,7 +16,6 @@ pydantic
 pydantic-settings
 opencv-python
 pyaudio
-pyserial
 numpy
 librosa
 pyttsx3
@@ -39,6 +38,5 @@ pypdf
 faster-whisper
 ctranslate2
 soundfile
-smbus2
 google-genai
 qwen-tts
