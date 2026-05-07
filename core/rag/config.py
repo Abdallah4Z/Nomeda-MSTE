@@ -37,7 +37,7 @@ class RAGConfig:
     # Generation
     model_repo: str = "nomeda-lab/nomeda-therapist-2B"
     max_context_chunks: int = 3
-    max_tokens: int = 80
+    max_tokens: int = 128
     min_new_tokens: int = 10
     temperature: float = 0.7
     top_p: float = 0.9
