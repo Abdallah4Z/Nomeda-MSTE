@@ -1,324 +1,242 @@
-# -*- coding: utf-8 -*-
+"""
+FusionAgent: Multi-modal emotion fusion + RAG-enhanced LLM generation.
+Pipeline: FER + SER + STT → RAG retrieval → LLM generation → TTS-ready text.
+"""
+
 import os
 import json
 import time
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Local fine-tuned therapist model + FAISS RAG  (PRIMARY)
-# ──────────────────────────────────────────────────────────────────────────────
+from typing import Optional, List, Dict
 from pathlib import Path
-from llama_cpp import Llama
-from sentence_transformers import SentenceTransformer
+
+import torch
 import numpy as np
-import faiss
-import pickle
 
-# ──────────────────────────────────────────────────────────────────────────────
-# OPTIONAL FALLBACK: Groq API-based LLM (fast, reliable)
-# ──────────────────────────────────────────────────────────────────────────────
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
-from dotenv import load_dotenv
-load_dotenv()
-
-# Resolve model path
-
+from core.rag.config import RAGConfig
+from core.rag.pipeline import RAGPipeline
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-MODEL_PATH = str(_PROJECT_ROOT / "LLM" / "model" / "therapist-gemma-q4_K_M.gguf")
-INDEX_DIR = str(_PROJECT_ROOT / "LLM" / "faiss_index")
-EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
-MAX_TOKENS = 256
-CONTEXT_SIZE = 4096
-TEMPERATURE = 0.7
-TOP_K_RAG = 2
 
+# ── TTS-optimised system prompt ──────────────────────────────────────────────
+SYSTEM_PROMPT = (
+    "You are Nomeda, a warm and compassionate AI therapist. "
+    "You are in a live video session with a user. "
+    "You see their facial expressions and hear their voice. "
+    "Respond as a real therapist would in a spoken conversation: "
+    "short, warm, natural sentences. No lists, no markdown, no JSON. "
+    "Use the therapy knowledge context when relevant. "
+    "Speak like a caring human — 2-3 sentences max."
+)
 
-def _detect_n_gpu_layers():
-    try:
-        import torch
-        if torch.cuda.is_available():
-            return -1
-    except Exception:
-        pass
-    return 0
+DISTRESS_PROMPT = (
+    "Based on the user's facial emotion, voice tone, and what they said, "
+    "rate their distress level from 0-100. Reply with ONLY a number."
+)
 
 
 class FusionAgent:
-    def __init__(self, model="llama-3.3-70b-versatile"):
-        """
-        PRIMARY: Local Gemma GGUF + FAISS RAG (default, no API needed).
-        FALLBACK: Groq API (if LLM_MODE=api or local model fails).
-        Set env LLM_MODE=api to force API mode.
-        """
-        self.mode = os.getenv("LLM_MODE", "local").strip().lower()
-        self.api_key = os.environ.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
-        self.llm = None          # Groq API handle
-        self._local_llm = None   # Llama handle
-        self._index = None
-        self._chunks = None
-        self._embed_model = None
-        self._rag_available = False
+    def __init__(self):
+        self.config = RAGConfig()
+        self.pipeline: Optional[RAGPipeline] = None
+        self.history: List[Dict[str, str]] = []
+        self._init_rag()
 
-        # ── 1. Try local model first (unless user explicitly wants api-only) ──
-        if self.mode != "api":
-            self._init_local()
-            if self._local_llm:
-                self._warmup_local_llm()
-                print("[FusionAgent] Local LLM initialized (PRIMARY).")
+    def _init_rag(self):
+        try:
+            self.pipeline = RAGPipeline(self.config)
+            if self.pipeline.vector_store.is_loaded():
+                print("[FusionAgent] RAG pipeline ready with therapy knowledge")
             else:
-                print("[FusionAgent] Local LLM failed to load.")
-
-        # ── 2. Try Groq API (primary when LLM_MODE=api, or fallback otherwise) ──
-        if self.mode == "api" or self._local_llm is None:
-            if self.api_key:
-                try:
-                    self.llm = ChatGroq(api_key=self.api_key, model_name=model, max_tokens=512)
-                    print("[FusionAgent] Groq API initialized (FALLBACK)." if self._local_llm else "[FusionAgent] Groq API initialized (PRIMARY).")
-                except Exception as e:
-                    print(f"[FusionAgent] Groq init failed: {e}")
-                    self.llm = None
-            else:
-                if self._local_llm is None:
-                    print("[FusionAgent] No GROQ_API_KEY found and local model unavailable.")
-
-        self.system_prompt = (
-            "You are a compassionate and professional AI therapist. "
-            "You listen carefully, show empathy, and provide thoughtful, evidence-based responses. "
-            "You have access to real-time multimodal inputs: face emotion, voice emotion, and what the user just said. "
-            "Respond as a warm, caring therapist in FIRST PERSON (e.g., 'I can see you're...', 'I'm here with you...'). "
-            "Keep your response short (1-2 sentences). "
-            "Also estimate a Distress Level from 0 to 100."
-        )
-
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", self.system_prompt),
-            ("human", "Face emotion: {face_emotion}\nVoice emotion: {voice_emotion}\nUser said: {stt_text}\n\nOutput STRICT JSON: {{\"distress\": <0-100>, \"response\": \"your therapist text here\"}}")
-        ])
-
-    def _warmup_local_llm(self):
-        """Run a single-token dummy inference to warm up CUDA kernels and VRAM."""
-        if self._local_llm is None:
-            return
-        try:
-            print("[FusionAgent] Warming up local LLM (first CUDA kernel compile)...")
-            self._local_llm(
-                "<start_of_turn>user\nHi<end_of_turn>\n<start_of_turn>model\n",
-                max_tokens=1,
-                temperature=0.0,
-                stop=["<end_of_turn>"],
-                echo=False,
-            )
-            print("[FusionAgent] Local LLM warmup complete.")
+                print("[FusionAgent] RAG pipeline loaded (no index — running without RAG)")
         except Exception as e:
-            print(f"[FusionAgent] Warmup warning: {e}")
+            print(f"[FusionAgent] RAG init warning: {e}")
+            self.pipeline = None
 
-    def _init_local(self):
-        if not os.path.exists(MODEL_PATH):
-            print(f"[FusionAgent] Local model not found at {MODEL_PATH}.")
-            return
-        try:
-            print("[FusionAgent] Loading local therapist model...")
-            n_gpu = _detect_n_gpu_layers()
-            self._local_llm = Llama(
-                model_path=MODEL_PATH,
-                n_ctx=CONTEXT_SIZE,
-                n_threads=os.cpu_count() or 4,
-                n_gpu_layers=n_gpu,
-                verbose=False,
-            )
-            print(f"[FusionAgent] Local model loaded (gpu_layers={n_gpu}).")
-        except Exception as e:
-            print(f"[FusionAgent] Local model failed: {e}")
-            self._local_llm = None
-            return
+    def fuse_inputs(
+        self,
+        face_emotion: str = "neutral",
+        voice_emotion: str = "neutral",
+        biometric: str = "",
+        stt_text: str = "",
+    ) -> dict:
+        query = stt_text or f"{face_emotion} {voice_emotion}"
+        context = ""
+        chunks = []
 
-        # Load RAG
-        index_path = os.path.join(INDEX_DIR, "index.faiss")
-        chunks_path = os.path.join(INDEX_DIR, "chunks.pkl")
-        if os.path.exists(index_path):
+        if self.pipeline and self.pipeline.vector_store.is_loaded():
             try:
-                self._index = faiss.read_index(index_path)
-                with open(chunks_path, "rb") as f:
-                    self._chunks = pickle.load(f)
-                print(f"[FusionAgent] FAISS RAG loaded: {self._index.ntotal} chunks.")
-                self._rag_available = True
-            except Exception as e:
-                print(f"[FusionAgent] RAG failed: {e}")
-        try:
-            self._embed_model = SentenceTransformer(EMBED_MODEL_NAME)
-        except Exception as e:
-            print(f"[FusionAgent] Embed model failed: {e}")
-
-    def _retrieve_context(self, query: str) -> list[str]:
-        if not self._rag_available or self._embed_model is None or self._index is None:
-            return []
-        try:
-            embedding = self._embed_model.encode([query], convert_to_numpy=True).astype(np.float32)
-            faiss.normalize_L2(embedding)
-            scores, indices = self._index.search(embedding, TOP_K_RAG)
-            results = []
-            for idx, score in zip(indices[0], scores[0]):
-                if idx != -1 and score > 0.1:
-                    results.append(self._chunks[idx]["text"])
-            return results
-        except Exception as e:
-            print(f"[FusionAgent] RAG retrieval error: {e}")
-            return []
-
-    def _build_local_prompt(self, face_emotion, voice_emotion, stt_text, context_chunks) -> str:
-        system = (
-            "You are a compassionate and professional AI therapist. "
-            "Respond as a warm, caring therapist in FIRST PERSON. "
-            "Keep your response short (1-2 sentences). "
-            "Also estimate a Distress Level from 0 to 100."
-        )
-        ctx = ""
-        if context_chunks:
-            ctx = "Relevant therapy knowledge:\n" + "\n".join([f"[{i+1}] {c}" for i, c in enumerate(context_chunks)]) + "\n\n"
-        user = (
-            f"Face emotion: {face_emotion}\n"
-            f"Voice emotion: {voice_emotion}\n"
-            f"User said: {stt_text if stt_text else '(no speech detected)'}\n\n"
-            f'Output STRICT JSON: {{"distress": <0-100>, "response": "your therapist text here"}}'
-        )
-        return f"<start_of_turn>system\n{system}\n\n{ctx}<end_of_turn>\n<start_of_turn>user\n{user}<end_of_turn>\n<start_of_turn>model\n"
-
-    def _parse_json(self, content: str) -> dict:
-        content = content.strip()
-        start = content.find("{")
-        end = content.rfind("}") + 1
-        if start >= 0 and end > start:
-            try:
-                parsed = json.loads(content[start:end])
-                return {
-                    "distress": int(parsed.get("distress", 50)),
-                    "response": parsed.get("response", "I'm here with you.").strip()
-                }
-            except Exception:
-                pass
-        distress = 50
-        lower = content.lower()
-        if any(w in lower for w in ["sad", "angry", "fear", "distress", "worried", "anxious", "upset"]):
-            distress = 70
-        elif any(w in lower for w in ["happy", "good", "great", "calm", "relaxed", "positive"]):
-            distress = 20
-        return {"distress": distress, "response": content}
-
-    def fuse_inputs(self, face_emotion, voice_emotion, stt_text=""):
-        # ── PRIMARY: Local model ──
-        if self._local_llm:
-            try:
-                rag_query = f"{face_emotion} {voice_emotion} {stt_text}".strip()
-                context_chunks = self._retrieve_context(rag_query) if rag_query else []
-                prompt = self._build_local_prompt(face_emotion, voice_emotion, stt_text, context_chunks)
-                response = self._local_llm(
-                    prompt,
-                    max_tokens=MAX_TOKENS,
-                    temperature=TEMPERATURE,
-                    stop=["<end_of_turn>", "<start_of_turn>"],
-                    echo=False,
+                context, chunks = self.pipeline.retriever.retrieve_context(
+                    query, k=self.config.max_context_chunks, max_tokens=1200,
                 )
-                raw_text = response["choices"][0]["text"].strip()
-                return self._parse_json(raw_text)
             except Exception as e:
-                print(f"[FusionAgent] Local inference error: {e}")
-                # Fall through to API if available
+                print(f"[FusionAgent] RAG retrieval error: {e}")
 
-        # ── FALLBACK: Groq API ──
-        if self.llm:
-            try:
-                chain = self.prompt | self.llm
-                response = chain.invoke({
-                    "face_emotion": face_emotion,
-                    "voice_emotion": voice_emotion,
-                    "stt_text": stt_text if stt_text else "(no speech detected)"
-                })
-                return self._parse_json(response.content)
-            except Exception as e:
-                print(f"[FusionAgent] Groq error: {e}")
+        prompt = self._build_tts_prompt(face_emotion, voice_emotion, biometric, stt_text, context)
+        response_text = self._generate(prompt)
 
-        # Ultimate fallback
-        distress = 50
-        if any(x in str(face_emotion) + str(voice_emotion) for x in ["Angry", "Fear", "Sad", "High"]):
-            distress = 70
-        elif any(x in str(face_emotion) + str(voice_emotion) for x in ["Happy", "Calm", "Low"]):
-            distress = 20
-        return {"distress": distress, "response": "I'm here with you. How are you feeling right now?"}
+        if response_text:
+            self.history.append({"role": "user", "content": stt_text or query})
+            self.history.append({"role": "assistant", "content": response_text})
+            if len(self.history) > self.config.max_history_turns * 2:
+                self.history = self.history[-(self.config.max_history_turns * 2):]
 
-    def generate_report(self, summary_data):
-        checkin = summary_data.get("checkin", {}) or {}
-        stats = summary_data.get("stats", {}) or {}
-        messages = summary_data.get("messages", []) or []
-        duration = summary_data.get("duration_seconds", 0)
+        distress = self._estimate_distress(face_emotion, voice_emotion, stt_text)
 
-        duration_min = int(duration // 60)
-        checkin_emotion = checkin.get("emotion", "N/A") or "N/A"
-        checkin_text = checkin.get("text", "") or ""
-        dominant = stats.get("dominant_emotion", "N/A") or "N/A"
-        avg_distress = int(stats.get("avg_distress", 0) or 0)
-        msg_count = int(stats.get("message_count", 0) or 0)
+        return {
+            "distress": distress,
+            "response": response_text or "I'm here with you. How are you feeling?",
+        }
 
-        conversation = ""
-        for m in messages[-6:]:
-            role = "User" if m.get("role") == "user" else "Therapist"
-            conversation += f"{role}: {m.get('text', '')}\n"
+    def _build_tts_prompt(
+        self,
+        face_emotion: str,
+        voice_emotion: str,
+        biometric: str,
+        stt_text: str,
+        context: str,
+    ) -> str:
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-        user_prompt = (
-            f"Write a warm, professional therapy session summary report.\n\n"
-            f"Session duration: {duration_min} minutes\n"
-            f"User's initial mood at check-in: {checkin_emotion}\n"
-            f"User's check-in note: {checkin_text}\n"
-            f"Dominant emotion during session: {dominant}\n"
-            f"Average distress score (0-100): {avg_distress}\n"
-            f"Messages exchanged: {msg_count}\n"
-            f"Last exchanges:\n{conversation}\n\n"
-            f"Format: a 3-4 paragraph report including: (1) session overview, "
-            f"(2) emotional patterns observed, (3) supportive observations "
-            f"and gentle recommendations. Use a warm, clinical-but-caring tone. "
-            f"Do NOT use markdown headers or bullet points."
-        )
+        if context:
+            messages.append({
+                "role": "system",
+                "content": f"Relevant therapy knowledge:\n{context}",
+            })
 
-        if self._local_llm:
-            try:
-                prompt = (
-                    f"<start_of_turn>system\n"
-                    f"You are a compassionate clinical psychologist writing a session summary. "
-                    f"Write in plain paragraphs, no markdown.\n"
-                    f"<end_of_turn>\n"
-                    f"<start_of_turn>user\n{user_prompt}<end_of_turn>\n"
-                    f"<start_of_turn>model\n"
-                )
-                response = self._local_llm(
-                    prompt, max_tokens=384, temperature=0.7,
-                    stop=["<end_of_turn>", "<start_of_turn>"],
-                    echo=False,
-                )
-                return response["choices"][0]["text"].strip()
-            except Exception as e:
-                print(f"[FusionAgent] Report local error: {e}")
+        if self.history:
+            for turn in self.history[-(self.config.max_history_turns * 2):]:
+                messages.append(turn)
 
-        if self.llm:
-            try:
-                from langchain_core.prompts import ChatPromptTemplate
-                from langchain_core.messages import SystemMessage, HumanMessage
-                report_prompt = ChatPromptTemplate.from_messages([
-                    ("system", "You are a compassionate clinical psychologist writing a session summary. Write in plain paragraphs, no markdown."),
-                    ("human", user_prompt)
-                ])
-                chain = report_prompt | self.llm
-                result = chain.invoke({})
-                return result.content.strip()
-            except Exception as e:
-                print(f"[FusionAgent] Report Groq error: {e}")
+        multimodal = f"[Face: {face_emotion}] [Voice: {voice_emotion}]"
+        if biometric:
+            multimodal += f" [Bio: {biometric}]"
+        user_content = f"{multimodal}\n\nUser says: {stt_text}" if stt_text else multimodal
+        messages.append({"role": "user", "content": user_content})
 
+        return self._apply_template(messages)
+
+    def _apply_template(self, messages: List[Dict]) -> str:
+        tok = self._get_tokenizer()
+        if tok and hasattr(tok, "apply_chat_template"):
+            return tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        result = ""
+        for m in messages:
+            role = m["role"]
+            content = m["content"]
+            if role == "system":
+                result += f"<|im_start|>system\n{content}<|im_end|>\n"
+            elif role == "user":
+                result += f"<|im_start|>user\n{content}<|im_end|>\n"
+            elif role == "assistant":
+                result += f"<|im_start|>assistant\n{content}<|im_end|>\n"
+        result += "<|im_start|>assistant\n"
+        return result
+
+    def _get_tokenizer(self):
+        if self.pipeline:
+            return self.pipeline.tokenizer
         return None
 
-    def fuse_inputs_fast(self, face_emotion, voice_emotion, stt_text="", max_tokens=128):
-        return self.fuse_inputs(face_emotion, voice_emotion, stt_text)
+    def _get_llm(self):
+        if self.pipeline:
+            return self.pipeline.llm
+        return None
+
+    def _generate(self, prompt: str) -> Optional[str]:
+        llm = self._get_llm()
+        tokenizer = self._get_tokenizer()
+        if llm is None or tokenizer is None:
+            return None
+
+        try:
+            inputs = tokenizer(prompt, return_tensors="pt").to(llm.device)
+            with torch.no_grad():
+                outputs = llm.generate(
+                    **inputs,
+                    max_new_tokens=self.config.max_tokens,
+                    min_new_tokens=self.config.min_new_tokens,
+                    temperature=self.config.temperature,
+                    top_p=self.config.top_p,
+                    do_sample=True,
+                    repetition_penalty=self.config.repetition_penalty,
+                    pad_token_id=tokenizer.eos_token_id,
+                )
+            input_len = inputs["input_ids"].shape[1]
+            response = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True).strip()
+            return self._clean_response(response)
+        except Exception as e:
+            print(f"[FusionAgent] Generation error: {e}")
+            return None
+
+    def ensure_llm_loaded(self):
+        import torch
+        if not self.pipeline or self.pipeline._llm is None:
+            return
+        dev = next(self.pipeline._llm.parameters()).device
+        if str(dev) == "cpu":
+            print("[FusionAgent] Moving LLM to GPU...")
+            self.pipeline._llm = self.pipeline._llm.to("cuda")
+            torch.cuda.empty_cache()
+
+    def offload_llm(self):
+        import torch
+        if self.pipeline and self.pipeline._llm is not None:
+            self.pipeline._llm = self.pipeline._llm.to("cpu")
+            torch.cuda.empty_cache()
+            print("[FusionAgent] LLM offloaded to CPU")
+
+    def _clean_response(self, text: str) -> str:
+        import re
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+        text = re.sub(r'<\|im_end\|>.*$', '', text, flags=re.DOTALL).strip()
+        text = re.sub(r'<\|endoftext\|>.*$', '', text, flags=re.DOTALL).strip()
+        return text
+
+    def _estimate_distress(self, face_emotion: str, voice_emotion: str, stt_text: str) -> int:
+        high_words = ["anxious", "scared", "terrified", "hopeless", "suicidal",
+                      "panic", "depressed", "angry", "furious", "devastated", "crisis"]
+        mid_words = ["sad", "worried", "nervous", "stressed", "upset", "frustrated",
+                     "lonely", "tired", "overwhelmed", "confused"]
+
+        distress = 30
+        face_lower = face_emotion.lower()
+        voice_lower = voice_emotion.lower()
+        text_lower = stt_text.lower()
+
+        if any(w in face_lower for w in ["angry", "fear", "sad", "disgust"]):
+            distress += 20
+        if any(w in voice_lower for w in ["angry", "fear", "sad", "high arousal"]):
+            distress += 15
+        if any(w in text_lower for w in high_words):
+            distress += 25
+        elif any(w in text_lower for w in mid_words):
+            distress += 10
+        if any(w in face_lower for w in ["happy", "calm", "neutral"]):
+            distress -= 10
+
+        return max(0, min(100, distress))
+
+    def fuse_inputs_fast(
+        self,
+        face_emotion: str = "neutral",
+        voice_emotion: str = "neutral",
+        biometric: str = "",
+        stt_text: str = "",
+        max_tokens: int = 128,
+    ) -> dict:
+        old_max = self.config.max_tokens
+        self.config.max_tokens = max_tokens
+        result = self.fuse_inputs(face_emotion, voice_emotion, biometric, stt_text)
+        self.config.max_tokens = old_max
+        return result
 
 
 if __name__ == "__main__":
     agent = FusionAgent()
-    result = agent.fuse_inputs("Happy", "Neutral", "I feel good today")
-    print(f"Fusion Result: {result}")
+    result = agent.fuse_inputs(
+        face_emotion="Happy",
+        voice_emotion="Neutral",
+        biometric="HR: 72",
+        stt_text="I feel much better today, thanks for asking.",
+    )
+    print(f"Result: {json.dumps(result, indent=2)}")

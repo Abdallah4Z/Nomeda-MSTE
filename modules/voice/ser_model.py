@@ -105,7 +105,7 @@ class WavLMHubertFusionModel(nn.Module):
 
 
 class SERInference:
-    def __init__(self, model_path="models/ser/wavlm_hubert_optimized_seed456.pth"):
+    def __init__(self, model_path="models/ser/wavlm_hubert_optimized_seed42.pth"):
         self.model_path = model_path
         self.model = None
         self.feature_extractor = None
