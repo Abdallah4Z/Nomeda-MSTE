@@ -3,18 +3,19 @@ from typing import Optional
 
 
 class LLMSettings(BaseSettings):
-    provider: str = "groq"
-    model: str = "llama-3.3-70b-versatile"
-    max_tokens: int = 512
+    provider: str = "nomeda"
+    model: str = "nomeda-lab/nomeda-therapist-2B"
+    max_tokens: int = 80
     temperature: float = 0.7
-    system_prompt: str = "You are a compassionate AI therapist."
+    system_prompt: str = ""
 
 
 class TTSSettings(BaseSettings):
-    provider: str = "gemini"
-    voice: str = "Kore"
-    model: str = "gemini-2.0-flash-tts-preview"
+    provider: str = "qwen"
+    voice: str = "Ryan"
+    model: str = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
     distress_threshold: int = 0
+    language: str = "English"
 
 
 class STTSettings(BaseSettings):
@@ -36,10 +37,10 @@ class SERSettings(BaseSettings):
 
 
 class RAGSettings(BaseSettings):
-    provider: str = "chroma"
-    persist_dir: str = "data/processed/chroma_db"
+    provider: str = "hybrid_faiss"
+    persist_dir: str = "data/rag_index"
     collection_name: str = "emotion_knowledge"
-    top_k: int = 3
+    top_k: int = 5
 
 
 class StorageSettings(BaseSettings):

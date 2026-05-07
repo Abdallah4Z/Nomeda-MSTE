@@ -51,6 +51,13 @@ def create_container(settings: Settings) -> Container:
             temperature=settings.llm.temperature,
             system_prompt=settings.llm.system_prompt,
         )
+    elif llm_provider_key == "nomeda":
+        from .providers.llm.nomeda import NomedaLLMProvider
+        provider_map["llm"] = NomedaLLMProvider(
+            model_path=settings.llm.model,
+            max_tokens=settings.llm.max_tokens,
+            temperature=settings.llm.temperature,
+        )
 
     # TTS
     tts_provider_key = settings.tts.provider
@@ -65,6 +72,14 @@ def create_container(settings: Settings) -> Container:
     elif tts_provider_key == "pyttsx3":
         from .providers.tts.pyttsx3 import Pyttsx3TTSProvider
         provider_map["tts"] = Pyttsx3TTSProvider(tts_dir=settings.storage.tts_dir)
+    elif tts_provider_key == "qwen":
+        from .providers.tts.qwen import QwenTTSProvider
+        provider_map["tts"] = QwenTTSProvider(
+            model_name=settings.tts.model,
+            speaker=settings.tts.voice,
+            language=settings.tts.language,
+            tts_dir=settings.storage.tts_dir,
+        )
 
     # STT
     stt_provider_key = settings.stt.provider
@@ -95,6 +110,12 @@ def create_container(settings: Settings) -> Container:
         provider_map["rag"] = ChromaRAGProvider(
             persist_dir=settings.rag.persist_dir,
             collection_name=settings.rag.collection_name,
+            top_k=settings.rag.top_k,
+        )
+    elif rag_provider_key == "hybrid_faiss":
+        from .providers.rag.hybrid_faiss import HybridFaissRAGProvider
+        provider_map["rag"] = HybridFaissRAGProvider(
+            index_dir=settings.rag.persist_dir,
             top_k=settings.rag.top_k,
         )
 

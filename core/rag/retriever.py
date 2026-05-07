@@ -1,49 +1,59 @@
-import os
-import requests
-from typing import List, Dict, Optional
-from datetime import datetime, timedelta
-from langchain_core.documents import Document
-from .vector_db import VectorDB
+from typing import List, Tuple, Optional
 
-class KnowledgeRetriever:
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("NEWS_API_KEY")
-        self.base_url = "https://newsapi.org/v2/everything"
-        self.vector_db = VectorDB()
+from .config import RAGConfig
+from .document_processor import Chunk
+from .embeddings import EmbeddingManager
+from .vector_store import HybridVectorStore
+from .reranker import CrossEncoderReranker
 
-    def fetch_and_index_news(self, topic: str = "mental health", max_articles: int = 5):
-        if not self.api_key:
-            print("News API key missing. Skipping fetch.")
-            return
 
-        from_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        params = {
-            "q": topic,
-            "from": from_date,
-            "language": "en",
-            "sortBy": "relevancy",
-            "pageSize": max_articles,
-            "apiKey": self.api_key,
-        }
+class Retriever:
+    def __init__(self, config: RAGConfig, vector_store: HybridVectorStore,
+                 embed_manager: EmbeddingManager,
+                 reranker: Optional[CrossEncoderReranker] = None):
+        self.config = config
+        self.vector_store = vector_store
+        self.embed_manager = embed_manager
+        self.reranker = reranker
 
-        try:
-            response = requests.get(self.base_url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            articles = data.get("articles", [])
-            
-            documents = []
-            for article in articles:
-                text = f"{article.get('title', '')}\n{article.get('description', '')}\n{article.get('content', '')}"
-                metadata = {"source": article.get("source", {}).get("name"), "url": article.get("url")}
-                documents.append(Document(page_content=text, metadata=metadata))
-            
-            if documents:
-                self.vector_db.add_documents(documents)
-                print(f"Indexed {len(documents)} articles for '{topic}'")
-        except Exception as e:
-            print(f"Fetch Error: {e}")
+    def retrieve(self, query: str, k: Optional[int] = None) -> List[Tuple[Chunk, float]]:
+        if not self.vector_store.is_loaded():
+            return []
 
-    def retrieve_context(self, query: str, k: int = 3) -> str:
-        results = self.vector_db.search(query, k=k)
-        return "\n---\n".join([res.page_content for res in results])
+        top_k = k or self.config.top_k_rerank
+
+        query_emb = self.embed_manager.encode_query(query)
+
+        dense_results = self.vector_store.search_dense(query_emb, self.config.top_k_dense)
+        sparse_results = self.vector_store.search_sparse(query, self.config.top_k_sparse)
+
+        fused = self.vector_store.fuse_results(dense_results, sparse_results, self.config.top_k_fused)
+
+        chunks_with_scores = []
+        for idx, score in fused:
+            if 0 <= idx < len(self.vector_store.chunks):
+                chunks_with_scores.append((self.vector_store.chunks[idx], score))
+
+        if self.reranker and len(chunks_with_scores) > 3:
+            chunks_with_scores = self.reranker.rerank(query, chunks_with_scores, top_k)
+
+        return chunks_with_scores[:top_k]
+
+    def retrieve_context(self, query: str, k: Optional[int] = None,
+                         max_tokens: int = 1500) -> Tuple[str, List[Chunk]]:
+        results = self.retrieve(query, k)
+        context_parts = []
+        used_chunks = []
+        token_budget = max_tokens
+
+        for chunk, score in results:
+            est_tokens = chunk.n_tokens or (len(chunk.text) // 4)
+            if est_tokens <= token_budget:
+                context_parts.append(chunk.text)
+                used_chunks.append(chunk)
+                token_budget -= est_tokens
+            else:
+                break
+
+        context = "\n\n".join(context_parts) if context_parts else ""
+        return context, used_chunks

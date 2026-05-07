@@ -32,7 +32,11 @@ websockets
 aiofiles
 pandas
 transformers
+accelerate
+torch
+pypdf
 faster-whisper
 ctranslate2
 soundfile
 google-genai
+qwen-tts
