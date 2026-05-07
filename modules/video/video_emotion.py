@@ -21,9 +21,11 @@ class VideoEmotionAnalyzer:
         self._last_deepface_time = 0
         self._deepface_interval = 2.0
         self._deepface_lock = threading.Lock()
+        self.last_deepface_info = None
         self._face_service_available = None
         self._face_service_check_time = 0
         self._face_service_interval = 10
+        self._frame_count = 0
 
     def _check_face_service(self):
         now = time.time()
@@ -68,6 +70,10 @@ class VideoEmotionAnalyzer:
         return self._process_frame(frame)
 
     def _process_frame(self, frame):
+        self._frame_count += 1
+        if self._frame_count % 3 != 0:
+            return self.last_emotion
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray, 1.3, 5)
 
@@ -107,22 +113,39 @@ class VideoEmotionAnalyzer:
                     face_results = data.get("faces", [])
                     if face_results:
                         emotion = face_results[0].get("emotion", "Neutral")
+                        probs = face_results[0].get("emotion_probs", {})
+                        conf = max(probs.values()) if probs else 0
                         self.last_emotion = emotion.capitalize() if isinstance(emotion, str) else emotion
+                        self.last_deepface_info = {"emotion": self.last_emotion, "confidence": conf}
                         return self.last_emotion
             except Exception:
                 pass
 
-        # Tier 2: Local DeepFace (mediapipe detector, then skip, then opencv)
-        now = time.time()
-        if self._check_deepface():
-            with self._deepface_lock:
-                if now - self._last_deepface_time >= self._deepface_interval:
+        # Tier 2: Local DeepFace (throttled: every 15 frames)
+        if self._frame_count % 15 == 0:
+            if self._check_deepface():
+                try:
+                    from deepface import DeepFace
+                    result = DeepFace.analyze(
+                        face_crop, actions=['emotion'],
+                        enforce_detection=False,
+                        detector_backend='skip',
+                        silent=True
+                    )
+                    emotion = result[0]['dominant_emotion']
+                    probs = result[0].get('emotion', {})
+                    max_prob = max(probs.values()) if probs else 0
+                    if max_prob >= 0.25:
+                        self.last_emotion = emotion.capitalize()
+                        self.last_deepface_info = {"emotion": self.last_emotion, "confidence": max_prob}
+                        return self.last_emotion
+                except Exception:
                     try:
                         from deepface import DeepFace
                         result = DeepFace.analyze(
                             face_crop, actions=['emotion'],
                             enforce_detection=False,
-                            detector_backend='skip',
+                            detector_backend='opencv',
                             silent=True
                         )
                         emotion = result[0]['dominant_emotion']
@@ -130,26 +153,10 @@ class VideoEmotionAnalyzer:
                         max_prob = max(probs.values()) if probs else 0
                         if max_prob >= 0.25:
                             self.last_emotion = emotion.capitalize()
-                            self._last_deepface_time = now
+                            self.last_deepface_info = {"emotion": self.last_emotion, "confidence": max_prob}
                             return self.last_emotion
                     except Exception:
-                        try:
-                            from deepface import DeepFace
-                            result = DeepFace.analyze(
-                                face_crop, actions=['emotion'],
-                                enforce_detection=False,
-                                detector_backend='opencv',
-                                silent=True
-                            )
-                            emotion = result[0]['dominant_emotion']
-                            probs = result[0].get('emotion', {})
-                            max_prob = max(probs.values()) if probs else 0
-                            if max_prob >= 0.25:
-                                self.last_emotion = emotion.capitalize()
-                                self._last_deepface_time = now
-                                return self.last_emotion
-                        except Exception:
-                            pass
+                        pass
 
         # Tier 3: Haar heuristic fallback
         face_ratio = w / frame.shape[1]

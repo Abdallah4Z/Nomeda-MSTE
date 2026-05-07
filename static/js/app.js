@@ -85,6 +85,7 @@ function showChat() {
   initChatInput();
   initChatVoice();
   initTimeline();
+  initTimelineChart();
 }
 
 function showSummary(data) {

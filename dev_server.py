@@ -5,7 +5,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 import uvicorn, json, asyncio
-import io, struct, time, math
+import io, struct, time, math, random
 
 app = FastAPI()
 
@@ -17,22 +17,36 @@ def root():
 def admin():
     return FileResponse('static/admin/index.html')
 
+EMOTION_CYCLE = ['Neutral','Calm','Happy','Neutral','Sad','Anxious','Calm','Happy','Neutral','Calm']
+DISTRESS_CYCLE = [25, 15, 10, 30, 55, 60, 20, 10, 30, 25]
+RESPONSES = [
+    "I hear you. Tell me more about how that feels.",
+    "That sounds like a lot to carry. I'm here with you.",
+    "It's okay to feel this way. Let's work through it together.",
+    "I'm glad you shared that with me.",
+    "Take a deep breath. You're safe here.",
+]
+
 @app.websocket('/ws')
 async def ws(websocket: WebSocket):
     await websocket.accept()
+    i = 0
     try:
         while True:
+            voice = EMOTION_CYCLE[i % len(EMOTION_CYCLE)]
+            face = EMOTION_CYCLE[(i + 1) % len(EMOTION_CYCLE)]
+            i += 1
             await websocket.send_json({
                 'running': True,
-                'video_emotion': 'Neutral',
-                'voice_emotion': 'Neutral',
+                'video_emotion': face,
+                'voice_emotion': voice,
                 'stt_text': '',
-                'llm_response': 'Hello, how are you feeling?',
-                'distress': 25,
+                'llm_response': random.choice(RESPONSES),
+                'distress': DISTRESS_CYCLE[i % len(DISTRESS_CYCLE)],
                 'tts_audio_url': None, 'tts_audio_mime': 'audio/wav',
                 'tts_audio_b64': None, 'tts_generating': False
             })
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
     except Exception:
         pass
 
@@ -80,7 +94,7 @@ async def admin_status():
 
 @app.get('/api/admin/config')
 async def admin_config():
-    return {'llm_mode': 'local', 'max_tokens': 256, 'temperature': 0.7, 'tts_backend': 'gemini', 'tts_threshold': 0, 'camera_source': 'browser', 'camera_id': 0}
+    return {'llm_mode': 'local', 'max_tokens': 256, 'temperature': 0.7, 'tts_backend': 'local', 'tts_threshold': 20, 'camera_source': 'browser', 'camera_id': 0}
 
 @app.post('/api/admin/config')
 async def admin_save():
@@ -100,7 +114,7 @@ async def admin_models():
         {'name': 'Fusion LLM (Gemma)', 'description': 'Local GGUF therapist model', 'status': 'ready'},
         {'name': 'FAISS RAG', 'description': 'Therapy literature vector index — 142 chunks', 'status': 'ready'},
         {'name': 'Speech Encoder', 'description': 'WavLM + HuBERT fusion for SER', 'status': 'loading'},
-        {'name': 'TTS Engine', 'description': 'Gemini Flash TTS (online)', 'status': 'ready'}
+        {'name': 'TTS Engine', 'description': 'Local pyttsx3 (fallback) or Gemini Flash TTS', 'status': 'ready'}
     ]}
 
 # Mock video feed — returns a static test pattern
@@ -173,7 +187,7 @@ def video_feed():
 app.mount('/static', StaticFiles(directory='static'), name='static')
 
 if __name__ == '__main__':
-    print('Nomeda Dev Server running at http://localhost:8000')
-    print('Admin panel at http://localhost:8000/admin')
+    print('Nomeda Dev Server running at http://localhost:8010')
+    print('Admin panel at http://localhost:8010/admin')
     print('Press Ctrl+C to stop')
-    uvicorn.run(app, host='0.0.0.0', port=8000, log_level='info')
+    uvicorn.run(app, host='0.0.0.0', port=8010, log_level='info')

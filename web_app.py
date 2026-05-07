@@ -90,6 +90,7 @@ current_logger = None
 
 latest_raw_frame = None
 latest_display_frame = None
+_last_browser_frame_time = 0
 
 state_lock = threading.Lock()
 frame_lock = threading.Lock()
@@ -106,7 +107,7 @@ if CAMERA_SOURCE == "device":
 else:
     print("[Startup] Browser camera mode enabled. Waiting for /api/browser-frame input.")
 
-video_analyzer = VideoEmotionAnalyzer(cap=cap, open_default=False, fast_mode=True)
+video_analyzer = VideoEmotionAnalyzer(cap=cap, open_default=False, fast_mode=os.getenv("FER_FAST_MODE", "false").strip().lower() == "true")
 voice_analyzer = VoiceEmotionAnalyzer()
 
 fusion_agent = FusionAgent()
@@ -193,18 +194,19 @@ def display_worker():
         if frame is not None:
             annotated = frame.copy()
             emotion_text = ""
+            deepface_info = getattr(video_analyzer, 'last_deepface_info', None)
             with state_lock:
                 emotion_text = system_state.get("video_emotion", "")
 
             try:
-                annotated, _ = detect_and_annotate(annotated, emotion_text=emotion_text)
+                annotated, _ = detect_and_annotate(annotated, emotion_text=emotion_text, deepface_info=deepface_info)
             except Exception:
                 pass
 
             with frame_lock:
                 latest_display_frame = annotated
 
-        time.sleep(0.033)
+        time.sleep(0.066)
 
 
 def voice_worker():
@@ -223,15 +225,16 @@ def voice_worker():
 
 
 def _on_tts_done(filepath, mime_type, audio_b64):
-    """Callback fired when Gemini TTS finishes generating audio."""
+    """Callback fired when TTS finishes generating audio."""
     with state_lock:
         if audio_b64:
             system_state["tts_audio_b64"] = audio_b64
             system_state["tts_audio_mime"] = mime_type
             system_state["tts_audio_url"] = f"/api/tts/latest?t={int(time.time())}"
-            print(f"[TTS Callback] Audio ready: {mime_type}, b64_len={len(audio_b64)}")
+            print(f"[TTS] COMPLETED | {mime_type}, b64_len={len(audio_b64)}, file={filepath}")
         else:
             system_state["tts_audio_b64"] = None
+            print(f"[TTS] COMPLETED | no audio data (local TTS or error)")
         system_state["tts_generating"] = False
 
 
@@ -240,9 +243,9 @@ def ai_fusion_worker():
     last_recommendation = ""
     last_stt = ""
     last_tts_time = 0
-    tts_repeat_interval = 15  # retrigger same msg every 15s
-    # Distress threshold: 0 = always speak, 40 = only when distressed
-    tts_distress_threshold = int(os.getenv("TTS_DISTRESS_THRESHOLD", "0"))
+    tts_min_interval = 10  # minimum seconds between TTS triggers
+    # Distress threshold: default 20 — only speak when distress is meaningful
+    tts_distress_threshold = int(os.getenv("TTS_DISTRESS_THRESHOLD", "20"))
     while True:
         if not running:
             time.sleep(1)
@@ -271,18 +274,26 @@ def ai_fusion_worker():
 
             now = time.time()
             response_changed = response != last_recommendation
-            repeat_due = (now - last_tts_time) > tts_repeat_interval
+            min_interval_passed = (now - last_tts_time) >= tts_min_interval
+            distress_ok = distress >= tts_distress_threshold
 
-            if response and distress >= tts_distress_threshold and (response_changed or repeat_due):
+            if distress_ok and response_changed and min_interval_passed:
                 with state_lock:
                     system_state["tts_generating"] = True
                     system_state["tts_audio_url"] = None
                     system_state["tts_audio_b64"] = None
-                print(f"[AI Fusion] Triggering TTS for distress={distress}: {response[:80]}...")
+                print(f"[AI Fusion] TTS TRIGGERED | distress={distress} | response={response[:80]}...")
                 tts_engine.speak(response, on_done=_on_tts_done)
                 last_recommendation = response
                 last_tts_time = now
                 _cleanup_old_tts()
+            elif not distress_ok:
+                if response_changed:
+                    print(f"[AI Fusion] TTS SUPPRESSED | distress={distress} < threshold={tts_distress_threshold}")
+            elif not response_changed:
+                pass  # same response, no repeat needed
+            else:
+                print(f"[AI Fusion] TTS SUPPRESSED | min_interval not met ({now - last_tts_time:.1f}s since last)")
 
             if stt_text and stt_text != last_stt:
                 last_stt = stt_text
@@ -447,7 +458,7 @@ def chat_message(data: dict):
 
         tts_url = None
         tts_b64 = None
-        if response and distress >= int(os.getenv("TTS_DISTRESS_THRESHOLD", "0")):
+        if response and distress >= int(os.getenv("TTS_DISTRESS_THRESHOLD", "20")):
             try:
                 filepath, mime, audio_b64 = tts_engine.generate_sync(response)
                 if filepath:
@@ -597,10 +608,15 @@ def debug_tts(text: str = "Hello, I am your AI therapist. How are you feeling to
 
 @app.post("/api/browser-frame")
 async def ingest_browser_frame(frame: UploadFile = File(...)):
-    global latest_raw_frame
+    global latest_raw_frame, _last_browser_frame_time
     content = await frame.read()
     if not content:
         return {"status": "empty_frame"}
+
+    now = time.time()
+    if now - _last_browser_frame_time < 0.2:
+        return {"status": "throttled"}
+    _last_browser_frame_time = now
 
     np_arr = np.frombuffer(content, np.uint8)
     decoded = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
@@ -754,11 +770,19 @@ async def generate_mjpeg():
     _, blank_jpg = cv2.imencode('.jpg', blank, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
     blank_bytes = blank_jpg.tobytes()
 
+    frame_counter = 0
+    SKIP_EVERY = 2  # encode every 2nd frame → ~15fps from 30fps source
+
     while True:
+        frame_counter += 1
+        if frame_counter % SKIP_EVERY != 0:
+            await asyncio.sleep(0.033)
+            continue
+
         with frame_lock:
             frame = latest_display_frame if latest_display_frame is not None else latest_raw_frame
         if frame is not None:
-            ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+            ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 60])
             if ret:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')

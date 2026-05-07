@@ -34,6 +34,14 @@ class VoiceEmotionAnalyzer:
         self.latest_emotion = "Idle"
         self.transcript_lock = threading.Lock()
 
+        self.browser_vad_lock = threading.Lock()
+        self.browser_energy_history = deque(maxlen=50)
+        self.browser_energy_threshold = 0.01
+        self.browser_is_speaking = False
+        self.browser_speech_chunks = 0
+        self.browser_silence_chunks = 0
+        self.browser_speech_buffer = []
+
         self.ser = SERInference()
         import torch
         stt_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -129,6 +137,38 @@ class VoiceEmotionAnalyzer:
                 self.browser_audio_pos += n
             self.browser_audio_written += n
 
+        with self.browser_vad_lock:
+            for i in range(0, len(audio_np), self.chunk):
+                sub = audio_np[i:i + self.chunk]
+                if len(sub) < self.chunk // 2:
+                    continue
+                rms = np.sqrt(np.mean(sub ** 2))
+                self.browser_energy_history.append(rms)
+                if len(self.browser_energy_history) >= 20:
+                    mean_e = np.mean(self.browser_energy_history)
+                    std_e = np.std(self.browser_energy_history) or 0.001
+                    self.browser_energy_threshold = np.clip(mean_e + 2.5 * std_e, 0.005, 0.06)
+
+                if rms > self.browser_energy_threshold:
+                    self.browser_speech_chunks += 1
+                    self.browser_silence_chunks = 0
+                    if not self.browser_is_speaking and self.browser_speech_chunks > 5:
+                        self.browser_is_speaking = True
+                        self.browser_speech_buffer = []
+                else:
+                    self.browser_silence_chunks += 1
+                    if self.browser_is_speaking and self.browser_silence_chunks > 20:
+                        self.browser_is_speaking = False
+                        self._process_browser_speech()
+                    self.browser_speech_chunks = max(0, self.browser_speech_chunks - 1)
+
+                if self.browser_is_speaking:
+                    self.browser_speech_buffer.append(sub.copy())
+                    total = sum(len(c) for c in self.browser_speech_buffer)
+                    if total > self.rate * 15:
+                        self.browser_is_speaking = False
+                        self._process_browser_speech()
+
     def _process_speech_segment(self):
         if not self.speech_buffer:
             return
@@ -142,9 +182,39 @@ class VoiceEmotionAnalyzer:
                 self.latest_transcript = text
             print(f"[STT] {text}")
 
+    def _process_browser_speech(self):
+        if not self.browser_speech_buffer:
+            return
+        segment = np.concatenate(self.browser_speech_buffer)
+        self.browser_speech_buffer = []
+        if len(segment) < self.rate * 0.5:
+            return
+        text = self.stt.transcribe(segment, sr=self.rate)
+        if text:
+            with self.transcript_lock:
+                self.latest_transcript = text
+            print(f"[STT] {text}")
+
     def _stt_loop(self):
         while self._running:
-            time.sleep(2.0)
+            time.sleep(0.5)
+            segment, src = self._get_audio_segment()
+            if segment is None or len(segment) < self.rate * 0.5:
+                continue
+            if src != "browser":
+                continue
+            if segment.max() > 1.0:
+                rms_threshold = 150.0
+            else:
+                rms_threshold = 0.005
+            rms = np.sqrt(np.mean(segment ** 2))
+            if rms < rms_threshold:
+                continue
+            text = self.stt.transcribe(segment, sr=self.rate)
+            if text:
+                with self.transcript_lock:
+                    self.latest_transcript = text
+                print(f"[STT] {text}")
 
     def _get_audio_segment(self):
         src = "mic"

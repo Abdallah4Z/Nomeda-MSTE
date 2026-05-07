@@ -8,6 +8,14 @@ from pathlib import Path
 from datetime import datetime
 
 TTS_BACKEND = os.getenv("TTS_BACKEND", "local").strip().lower()
+# Auto-select Gemini if a valid GOOGLE_API_KEY is present
+_google_key = os.getenv("GOOGLE_API_KEY", "")
+if _google_key and _google_key not in ("", "your_google_api_key_here", "your_key_here"):
+    TTS_BACKEND = "gemini"
+    print(f"[TTSEngine] GOOGLE_API_KEY detected — using Gemini TTS backend")
+else:
+    print(f"[TTSEngine] No valid GOOGLE_API_KEY — using local pyttsx3 TTS")
+
 TTS_OUTPUT_DIR = Path(os.getenv("TTS_OUTPUT_DIR", "data/tts"))
 TTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -22,12 +30,27 @@ def _save_pcm_as_wav(filepath, pcm_bytes, channels=1, rate=24000, sample_width=2
 
 class LocalTTSEngine:
     """Local pyttsx3 TTS (fallback, no API needed)."""
-    def __init__(self, rate=150):
+    def __init__(self, rate=175):
         try:
             import pyttsx3
             self.engine = pyttsx3.init()
             self.engine.setProperty('rate', rate)
+            self.engine.setProperty('volume', 1.0)
+            # Try to pick a higher-quality voice (prefer female/natural)
+            voices = self.engine.getProperty('voices')
+            for voice in voices:
+                if 'female' in str(voice.name).lower() or 'natasha' in str(voice.id).lower() or 'zira' in str(voice.name).lower():
+                    self.engine.setProperty('voice', voice.id)
+                    print(f"[LocalTTS] Selected voice: {voice.name}")
+                    break
+            else:
+                # Fallback: try any English voice
+                for voice in voices:
+                    if 'english' in str(voice.name).lower():
+                        self.engine.setProperty('voice', voice.id)
+                        break
             self.is_speaking = False
+            print(f"[LocalTTS] Initialized — rate={rate}, voices_available={len(voices)}")
         except Exception as e:
             print(f"[LocalTTS] Initialization Error: {e}")
             self.engine = None

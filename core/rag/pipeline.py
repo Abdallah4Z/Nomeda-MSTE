@@ -61,20 +61,35 @@ class RAGPipeline:
 
     def _load_llm(self):
         repo = self.config.model_repo
+        # Check if model weights exist locally before attempting to load
+        from pathlib import Path
+        repo_path = Path(repo)
+        if repo_path.exists():
+            has_weights = any(repo_path.glob("*.safetensors")) or any(repo_path.glob("*.bin"))
+            if not has_weights:
+                print(f"[!] Model config found but weights missing at {repo}. LLM generation disabled.")
+                self._tokenizer = AutoTokenizer.from_pretrained(repo, trust_remote_code=True)
+                self._llm = None
+                return
         print(f"[+] Loading FP16 model: {repo}")
         self._tokenizer = AutoTokenizer.from_pretrained(repo, trust_remote_code=True)
-        self._llm = AutoModelForCausalLM.from_pretrained(
-            repo,
-            device_map="auto",
-            trust_remote_code=True,
-            dtype=torch.float16,
-        )
-        self._llm.eval()
-        if torch.cuda.is_available():
-            for i in range(torch.cuda.device_count()):
-                free, total = torch.cuda.mem_get_info(i)
-                print(f"  GPU {i}: {(total - free) / 1e9:.2f}GB used / {total / 1e9:.2f}GB total")
-        print("[+] Model loaded")
+        try:
+            self._llm = AutoModelForCausalLM.from_pretrained(
+                repo,
+                device_map="auto",
+                trust_remote_code=True,
+                dtype=torch.float16,
+                local_files_only=True,
+            )
+            self._llm.eval()
+            if torch.cuda.is_available():
+                for i in range(torch.cuda.device_count()):
+                    free, total = torch.cuda.mem_get_info(i)
+                    print(f"  GPU {i}: {(total - free) / 1e9:.2f}GB used / {total / 1e9:.2f}GB total")
+            print("[+] Model loaded")
+        except Exception as e:
+            print(f"[!] Failed to load LLM: {e}. Running without generation.")
+            self._llm = None
 
     def _clean_response(self, text: str) -> str:
         import re

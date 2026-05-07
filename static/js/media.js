@@ -22,10 +22,9 @@ async function initCamera() {
     await v.play();
 
     var pipFeed = $('pipFeed');
-    pipFeed.srcObject = stream;
+    pipFeed.src = '/video_feed';
     pipFeed.style.display = '';
     $('pipPlaceholder').style.display = 'none';
-    pipFeed.play().catch(function () {});
 
     if (state.frameTimer) clearInterval(state.frameTimer);
     state.frameTimer = setInterval(sendFrame, FRAME_INTERVAL);
@@ -165,9 +164,9 @@ function initTimelineChart() {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { labels: { color: '#7a7a8c', font: { size: 10 } } } },
       scales: {
-        x: { display: true, ticks: { color: '#555566', font: { size: 9 }, maxTicksLimit: 8 } },
-        y: { min: 0, max: 7, ticks: { stepSize: 1, color: '#555566', font: { size: 9 },
-              callback: function(v) { var m = {0:'Angry',1:'Fear',2:'Disgust',3:'Sad',4:'Neutral',5:'Calm',6:'Happy',7:'Surprised'}; return m[v] || v; }
+        x: { display: true, ticks: { color: '#555566', font: { size: 8 }, maxTicksLimit: 8 } },
+        y: { min: 0, max: 7, ticks: { stepSize: 1, color: '#555566', font: { size: 8 },
+              callback: function(v) { var m = {0:'Ang',1:'Fer',2:'Dis',3:'Sad',4:'Neu',5:'Cal',6:'Hap',7:'Sur'}; return m[v] || v; }
             }
         }
       },
@@ -181,6 +180,14 @@ var emotionValue = { 'angry':0,'anger':0,'fear':1,'disgust':2,'sad':3,'neutral':
                      'Anxious':1, 'No Face Detected':null, 'No Frame':null, 'Idle':null };
 
 function updateTimeline(voiceEmotion, faceEmotion, distress) {
+  // Always update live labels — even when timeline panel is closed
+  var fl = document.getElementById('tlFaceLabel');
+  var vl = document.getElementById('tlVoiceLabel');
+  var fLabel = faceEmotion && faceEmotion !== 'Idle' ? faceEmotion : '--';
+  var vLabel = voiceEmotion && voiceEmotion !== 'Idle' ? voiceEmotion : '--';
+  if (fl) fl.innerHTML = '<span class="dot face"></span>Face: ' + fLabel;
+  if (vl) vl.innerHTML = '<span class="dot voice"></span>Voice: ' + vLabel;
+
   if (!tlChart) return;
   var now = new Date().toLocaleTimeString();
   var v = emotionValue[voiceEmotion] !== undefined ? emotionValue[voiceEmotion] : null;
@@ -188,18 +195,12 @@ function updateTimeline(voiceEmotion, faceEmotion, distress) {
   tlChart.data.labels.push(now);
   tlChart.data.datasets[0].data.push(f);
   tlChart.data.datasets[1].data.push(v);
-  if (tlChart.data.labels.length > 40) {
+  if (tlChart.data.labels.length > 60) {
     tlChart.data.labels.shift();
     tlChart.data.datasets[0].data.shift();
     tlChart.data.datasets[1].data.shift();
   }
   tlChart.update();
-
-  // Update live labels in timeline toggle
-  var fl = document.getElementById('tlFaceLabel');
-  var vl = document.getElementById('tlVoiceLabel');
-  if (fl) fl.textContent = 'Face: ' + (faceEmotion && faceEmotion !== 'Idle' ? faceEmotion : '--');
-  if (vl) vl.textContent = 'Voice: ' + (voiceEmotion && voiceEmotion !== 'Idle' ? voiceEmotion : '--');
 }
 
 // ── WebSocket ──
@@ -234,6 +235,14 @@ function connectWS() {
           serLabel.textContent = 'Voice: ' + d.voice_emotion;
           serLabel.parentElement.classList.add('active');
         }
+
+        // Always update timeline labels directly — even before chart is initialized
+        var flEl = document.getElementById('tlFaceLabel');
+        var vlEl = document.getElementById('tlVoiceLabel');
+        var fLabel = d.video_emotion && d.video_emotion !== 'Idle' ? d.video_emotion : '--';
+        var vLabel = d.voice_emotion && d.voice_emotion !== 'Idle' ? d.voice_emotion : '--';
+        if (flEl) flEl.innerHTML = '<span class="dot face"></span>Face: ' + fLabel;
+        if (vlEl) vlEl.innerHTML = '<span class="dot voice"></span>Voice: ' + vLabel;
 
         // Robot face: use video emotion, fall back to voice emotion
         var faceEmotion = d.video_emotion;

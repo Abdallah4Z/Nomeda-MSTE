@@ -7,9 +7,19 @@ class STTEngine:
         self.model = None
         self.model_size = model_size
         self.device = device
-        self._load_model()
+        self._loading = False
+        self._load_lock = __import__('threading').Lock()
+        # Lazy-load on first use to avoid blocking startup
 
-    def _load_model(self):
+    def _ensure_loaded(self):
+        if self.model is not None:
+            return
+        if self._loading:
+            return
+        with self._load_lock:
+            if self.model is not None or self._loading:
+                return
+            self._loading = True
         try:
             from faster_whisper import WhisperModel
             compute_type = "float16" if self.device == "cuda" and torch.cuda.is_available() else "int8"
@@ -23,6 +33,7 @@ class STTEngine:
             self.model = None
 
     def transcribe(self, audio_np, sr=16000):
+        self._ensure_loaded()
         if self.model is None:
             return ""
         try:
