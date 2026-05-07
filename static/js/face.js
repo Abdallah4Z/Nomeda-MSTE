@@ -9,10 +9,10 @@ const Face = (function () {
   var LEX = 170, REX = 390, EY_BASE = 245;
 
   var DEFS = {
-    normal: { hw:75, hh:80, cr:28, tb:  0, bb: 0, ey: 0, morph:0 },
-    happy:  { hw:78, hh:  6, cr: 6, tb:100, bb: 0, ey:-6, morph:0 },
-    sad:    { hw:75, hh:70, cr:25, tb:-70, bb: 8, ey:10, morph:0 },
-    loved:  { hw:75, hh:80, cr:28, tb:  0, bb: 0, ey: 0, morph:1 }
+    normal: { hw:70, hh:75, cr:26, tb:  0, bb: 0, ey: 0, ha:0, ea:1 },
+    happy:  { hw:72, hh:  6, cr: 6, tb: 95, bb: 0, ey:-5, ha:0, ea:1 },
+    sad:    { hw:70, hh:65, cr:24, tb:-65, bb: 8, ey:10, ha:0, ea:1 },
+    loved:  { hw:70, hh:75, cr:26, tb:  0, bb: 0, ey: 0, ha:1, ea:0 }
   };
 
   var canvas, ctx;
@@ -28,6 +28,7 @@ const Face = (function () {
   var talking = false, talkPhase = 0;
   var exprExtra = 0;
   var idlePhase = 0;
+  var heartBeat = 0;
 
   function lerp(a,b,t) { return a + (b-a)*t; }
   function ease(t) { return t<0.5 ? 2*t*t : -1+(4-2*t)*t; }
@@ -52,31 +53,28 @@ const Face = (function () {
 
   function eyePath(cx, cy, p) {
     var w = p.hw, h = p.hh, r = Math.min(p.cr, w, h);
-    var mt = p.morph || 0;
-
-    // Heart morph: top dips inward creating cleft, bottom extends to point
-    var morphTop  = -mt * 70;  // top bows DOWN (heart cleft)
-    var morphBot  =  mt * 55;  // bottom bows DOWN (heart point)
-    var morphWide =  mt * 10;  // slight widening
-    var morphR    =  mt * 8;   // more rounded top
-
-    w += morphWide;
-    var tb = p.tb + morphTop;
-    var bb = p.bb + morphBot;
-    r = Math.min(r + morphR, w, h);
-
     var L = cx - w, R = cx + w, T = cy - h, B = cy + h;
 
     ctx.beginPath();
     ctx.moveTo(L + r, T);
-    ctx.quadraticCurveTo(cx, T - tb, R - r, T);
+    ctx.quadraticCurveTo(cx, T - p.tb, R - r, T);
     ctx.quadraticCurveTo(R, T, R, T + r);
     ctx.lineTo(R, B - r);
     ctx.quadraticCurveTo(R, B, R - r, B);
-    ctx.quadraticCurveTo(cx, B + bb, L + r, B);
+    ctx.quadraticCurveTo(cx, B + p.bb, L + r, B);
     ctx.quadraticCurveTo(L, B, L, B - r);
     ctx.lineTo(L, T + r);
     ctx.quadraticCurveTo(L, T, L + r, T);
+    ctx.closePath();
+  }
+
+  function heartPath(cx, cy, s) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + s * 0.85);
+    ctx.bezierCurveTo(cx - s*0.1, cy + s*0.5, cx - s*1.1, cy + s*0.05, cx - s*0.85, cy - s*0.45);
+    ctx.bezierCurveTo(cx - s*0.55, cy - s*1.0, cx, cy - s*0.6, cx, cy - s*0.1);
+    ctx.bezierCurveTo(cx, cy - s*0.6, cx + s*0.55, cy - s*1.0, cx + s*0.85, cy - s*0.45);
+    ctx.bezierCurveTo(cx + s*1.1, cy + s*0.05, cx + s*0.1, cy + s*0.5, cx, cy + s*0.85);
     ctx.closePath();
   }
 
@@ -122,22 +120,39 @@ const Face = (function () {
 
     var bs = 1 - blinkProg;
     var ep = Object.assign({}, pp, { hh: pp.hh*bs, cr: Math.min(pp.cr, pp.hh*bs) });
-    if (blinkProg > 0.4) ep.morph = lerp(ep.morph, 0, (blinkProg-0.4)*1.67);
 
-    outline(function() { eyePath(LEX, ey, ep); });
-    outline(function() { eyePath(REX, ey, ep); });
+    // Draw eyes (fade out as hearts appear)
+    var eyeAlpha = p.ea;
+    if (p.ha > 0.01 && eyeAlpha > 0.5) eyeAlpha = lerp(eyeAlpha, 0, p.ha);
 
-    glow(function() { eyePath(LEX, ey, ep); });
-    glow(function() { eyePath(REX, ey, ep); });
+    if (eyeAlpha > 0.01) {
+      outline(function() { eyePath(LEX, ey, ep); });
+      outline(function() { eyePath(REX, ey, ep); });
+      glow(function() { eyePath(LEX, ey, ep); }, eyeAlpha);
+      glow(function() { eyePath(REX, ey, ep); }, eyeAlpha);
+      if (bs > 0.15 && p.ha < 0.3)
+        pupil(LEX, ey, ep), pupil(REX, ey, ep);
+    }
 
-    if (bs > 0.15 && ep.morph < 0.5)
-      pupil(LEX, ey, ep), pupil(REX, ey, ep);
+    // Draw hearts for loved state with pulsing
+    if (p.ha > 0.01) {
+      var beat = 1 + Math.sin(heartBeat) * 0.06;
+      var hs = 55 * beat;
+      var ha = Math.min(1, p.ha);
+      outline(function() { heartPath(LEX, ey - 5, hs); });
+      outline(function() { heartPath(REX, ey - 5, hs); });
+      glow(function() { heartPath(LEX, ey - 5, hs); }, ha);
+      glow(function() { heartPath(REX, ey - 5, hs); }, ha);
+    }
   }
 
   function update(dt) {
     if (progress < 1) progress = Math.min(1, progress + dt/animDur);
-
     idlePhase += dt * 0.0018;
+
+    var p = cur();
+    if (p.ha > 0.01) heartBeat += dt * 0.005;
+    else heartBeat = lerp(heartBeat, 0, dt*0.003);
 
     if (!blinking) {
       blinkTimer += dt;

@@ -231,6 +231,12 @@ class TTSEngine:
 
     def speak(self, text, on_done=None):
         if self._engine:
+            # If qwen failed to load, try local fallback
+            if self.backend == "qwen" and getattr(self._engine, '_load_failed', False):
+                if not hasattr(self, '_local_fallback'):
+                    self._local_fallback = LocalTTSEngine(rate=175)
+                self._local_fallback.speak(text, on_done=on_done)
+                return
             self._engine.speak(text, on_done=on_done)
 
     def generate_sync(self, text):

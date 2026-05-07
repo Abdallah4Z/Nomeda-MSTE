@@ -3,7 +3,7 @@
 /* ── Nomeda — Media & Connection ── */
 
 const WS_RECONNECT_DELAY = 2000;
-const FRAME_INTERVAL = 66;
+const FRAME_INTERVAL = 100;
 
 // ── Camera ──
 async function initCamera() {

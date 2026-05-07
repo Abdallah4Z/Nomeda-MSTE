@@ -57,12 +57,15 @@ class QwenTTS:
         self.default_speaker = speaker
         self.language = language
         self._model = None
+        self._load_failed = False
         self.is_speaking = False
         self.latest_audio_path: Optional[str] = None
         self.latest_mime_type = "audio/wav"
 
     def _load(self):
         if self._model is not None:
+            return
+        if self._load_failed:
             return
         try:
             from qwen_tts import Qwen3TTSModel
@@ -91,9 +94,11 @@ class QwenTTS:
             print(f"[QwenTTS] Loaded successfully (device={self.device})")
         except ImportError:
             print("[QwenTTS] ERROR: qwen-tts package not installed. Run: pip install -U qwen-tts")
+            self._load_failed = True
             raise
         except Exception as e:
             print(f"[QwenTTS] ERROR loading model: {e}")
+            self._load_failed = True
             raise
 
     def load(self):
@@ -155,6 +160,11 @@ class QwenTTS:
 
     def speak(self, text: str, emotion_hint: str = "neutral",
               on_done: Optional[Callable] = None):
+        if self._load_failed:
+            print("[QwenTTS] Model load previously failed, skipping TTS.")
+            if on_done:
+                on_done(None, "audio/wav", None)
+            return
         def run():
             try:
                 filepath, mime, audio_b64 = self.generate_sync(text, emotion_hint)

@@ -603,7 +603,7 @@ async def ingest_browser_frame(frame: UploadFile = File(...)):
         return {"status": "empty_frame"}
 
     now = time.time()
-    if now - _last_browser_frame_time < 0.2:
+    if now - _last_browser_frame_time < 0.1:
         return {"status": "throttled"}
     _last_browser_frame_time = now
 
