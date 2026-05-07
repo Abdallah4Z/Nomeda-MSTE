@@ -15,6 +15,10 @@ import numpy as np
 from core.rag.config import RAGConfig
 from core.rag.pipeline import RAGPipeline
 
+from modules.logging import get_logger
+log = get_logger("llm")
+
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ── TTS-optimised system prompt ──────────────────────────────────────────────
@@ -45,11 +49,11 @@ class FusionAgent:
         try:
             self.pipeline = RAGPipeline(self.config)
             if self.pipeline.vector_store.is_loaded():
-                print("[FusionAgent] RAG pipeline ready with therapy knowledge")
+                log.info("[FusionAgent] RAG pipeline ready with therapy knowledge")
             else:
-                print("[FusionAgent] RAG pipeline loaded (no index — running without RAG)")
+                log.info("[FusionAgent] RAG pipeline loaded (no index — running without RAG)")
         except Exception as e:
-            print(f"[FusionAgent] RAG init warning: {e}")
+            log.info(f" RAG init warning: {e}")
             self.pipeline = None
 
     def fuse_inputs(
@@ -69,7 +73,7 @@ class FusionAgent:
                     query, k=self.config.max_context_chunks, max_tokens=1200,
                 )
             except Exception as e:
-                print(f"[FusionAgent] RAG retrieval error: {e}")
+                log.info(f" RAG retrieval error: {e}")
 
         prompt = self._build_tts_prompt(face_emotion, voice_emotion, biometric, stt_text, context)
         response_text = self._generate(prompt)
@@ -165,7 +169,7 @@ class FusionAgent:
             response = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True).strip()
             return self._clean_response(response)
         except Exception as e:
-            print(f"[FusionAgent] Generation error: {e}")
+            log.info(f" Generation error: {e}")
             return None
 
     def ensure_llm_loaded(self):
@@ -174,7 +178,7 @@ class FusionAgent:
             return
         dev = next(self.pipeline._llm.parameters()).device
         if str(dev) == "cpu":
-            print("[FusionAgent] Moving LLM to GPU...")
+            log.info("[FusionAgent] Moving LLM to GPU...")
             self.pipeline._llm = self.pipeline._llm.to("cuda")
             torch.cuda.empty_cache()
 
@@ -183,7 +187,7 @@ class FusionAgent:
         if self.pipeline and self.pipeline._llm is not None:
             self.pipeline._llm = self.pipeline._llm.to("cpu")
             torch.cuda.empty_cache()
-            print("[FusionAgent] LLM offloaded to CPU")
+            log.info("[FusionAgent] LLM offloaded to CPU")
 
     def _clean_response(self, text: str) -> str:
         import re
@@ -239,4 +243,4 @@ if __name__ == "__main__":
         biometric="HR: 72",
         stt_text="I feel much better today, thanks for asking.",
     )
-    print(f"Result: {json.dumps(result, indent=2)}")
+    log.info(f"Result: {json.dumps(result, indent=2)}")

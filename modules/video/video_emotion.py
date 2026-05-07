@@ -6,6 +6,10 @@ import requests
 import os
 import numpy as np
 
+from modules.logging import get_logger
+log = get_logger("fer")
+
+
 FACE_ANALYSIS_URL = os.environ.get("FACE_ANALYSIS_URL", "http://127.0.0.1:8001")
 _REQUEST_TIMEOUT = 2
 
@@ -48,9 +52,9 @@ class VideoEmotionAnalyzer:
             try:
                 from deepface import DeepFace
                 self._deepface_available = True
-                print("[VideoEmotion] DeepFace available for emotion detection.")
+                log.info("[VideoEmotion] DeepFace available for emotion detection.")
             except Exception as e:
-                print(f"[VideoEmotion] DeepFace unavailable, using heuristic fallback: {e}")
+                log.info(f" DeepFace unavailable, using heuristic fallback: {e}")
                 self._deepface_available = False
         return self._deepface_available
 
@@ -172,7 +176,7 @@ if __name__ == "__main__":
     try:
         while True:
             emotion = v_analyzer.analyze_frame()
-            print(f"Video Emotion: {emotion}")
+            log.info(f"Video Emotion: {emotion}")
             time.sleep(0.5)
     except KeyboardInterrupt:
         v_analyzer.close()

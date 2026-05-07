@@ -12,6 +12,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Callable
 
+from modules.logging import get_logger
+log = get_logger("tts")
+
+
 TTS_OUTPUT_DIR = Path(os.getenv("TTS_OUTPUT_DIR", "data/tts"))
 TTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -72,7 +76,7 @@ class QwenTTS:
             import torch
             dtype_map = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}
             torch_dtype = dtype_map.get(self.dtype, torch.bfloat16)
-            print(f"[QwenTTS] Loading {self.model_name}...")
+            log.info(f" Loading {self.model_name}...")
 
             import torch
             cc = torch.cuda.get_device_capability()
@@ -80,10 +84,10 @@ class QwenTTS:
                 attn = "flash_attention_2"
             elif cc[0] >= 7:
                 attn = "sdpa"
-                print(f"[QwenTTS] GPU compute {cc[0]}.{cc[1]} — using sdpa attention")
+                log.info(f" GPU compute {cc[0]}.{cc[1]} — using sdpa attention")
             else:
                 attn = "eager"
-                print(f"[QwenTTS] GPU compute {cc[0]}.{cc[1]} — using eager attention")
+                log.info(f" GPU compute {cc[0]}.{cc[1]} — using eager attention")
 
             self._model = Qwen3TTSModel.from_pretrained(
                 self.model_name,
@@ -91,13 +95,13 @@ class QwenTTS:
                 dtype=torch_dtype,
                 attn_implementation=attn,
             )
-            print(f"[QwenTTS] Loaded successfully (device={self.device})")
+            log.info(f" Loaded successfully (device={self.device})")
         except ImportError:
-            print("[QwenTTS] ERROR: qwen-tts package not installed. Run: pip install -U qwen-tts")
+            log.info("[QwenTTS] ERROR: qwen-tts package not installed. Run: pip install -U qwen-tts")
             self._load_failed = True
             raise
         except Exception as e:
-            print(f"[QwenTTS] ERROR loading model: {e}")
+            log.info(f" ERROR loading model: {e}")
             self._load_failed = True
             raise
 
@@ -112,7 +116,7 @@ class QwenTTS:
             except AttributeError:
                 self._model = None
             torch.cuda.empty_cache()
-            print("[QwenTTS] Model offloaded to CPU")
+            log.info("[QwenTTS] Model offloaded to CPU")
 
     def _select_speaker(self, emotion_hint: str) -> str:
         emotion_hint = emotion_hint.lower().strip()
@@ -136,12 +140,12 @@ class QwenTTS:
                 speaker=speaker,
             )
         except Exception as e:
-            print(f"[QwenTTS] Generation error: {e}")
+            log.info(f"[QwenTTS] Generation error: {e}")
             return None, "audio/wav", None
 
         elapsed = time.time() - t0
         duration = len(wavs[0]) / sr if wavs else 0
-        print(f"[QwenTTS] Generated {duration:.1f}s audio in {elapsed:.2f}s (RTF={elapsed/max(duration,0.1):.2f}x)")
+        log.info(f"[QwenTTS] Generated {duration:.1f}s audio in {elapsed:.2f}s (RTF={elapsed/max(duration,0.1):.2f}x)")
 
         ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         filename = f"response_{ts}.wav"
@@ -161,7 +165,7 @@ class QwenTTS:
     def speak(self, text: str, emotion_hint: str = "neutral",
               on_done: Optional[Callable] = None):
         if self._load_failed:
-            print("[QwenTTS] Model load previously failed, skipping TTS.")
+            log.info("[QwenTTS] Model load previously failed, skipping TTS.")
             if on_done:
                 on_done(None, "audio/wav", None)
             return
@@ -171,7 +175,7 @@ class QwenTTS:
                 if on_done:
                     on_done(filepath, mime, audio_b64)
             except Exception as e:
-                print(f"[QwenTTS] Speak error: {e}")
+                log.info(f"[QwenTTS] Speak error: {e}")
                 if on_done:
                     on_done(None, "audio/wav", None)
             finally:

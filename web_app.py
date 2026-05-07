@@ -12,6 +12,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+from modules.logging import get_logger
+log = get_logger("main")
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, WebSocket, UploadFile, File
@@ -105,7 +108,7 @@ if CAMERA_SOURCE == "device":
         print(f"[Startup] Warning: Camera index {CAMERA_ID} not available.")
         cap = None
 else:
-    print("[Startup] Browser camera mode enabled. Waiting for /api/browser-frame input.")
+    log.info("[Startup]" Browser camera mode enabled. Waiting for /api/browser-frame input.")
 
 video_analyzer = VideoEmotionAnalyzer(cap=cap, open_default=False, fast_mode=os.getenv("FER_FAST_MODE", "false").strip().lower() == "true")
 voice_analyzer = VoiceEmotionAnalyzer()
@@ -288,7 +291,7 @@ def ai_fusion_worker():
                 last_stt = stt_text
 
         except Exception as e:
-            print(f"[AI Fusion] Error: {e}")
+            log.error(f" {e}")
             import traceback
             traceback.print_exc()
         time.sleep(3)
@@ -303,15 +306,15 @@ def process_video_in_thread(session_id, video_path):
         with video_session_lock:
             video_session_results[session_id]["status"] = "processing"
 
-        print(f"[VideoSession {session_id}] Starting video processing: {video_path}")
+        log.info(f"[session:{session_id}]" Starting video processing: {video_path}")
         results = video_processor.process_video_session(video_path)
-        print(f"[VideoSession {session_id}] FER={results.get('fer_emotion')}, SER={results.get('ser_emotion')}, STT_len={len(results.get('stt_text', ''))}")
+        log.info(f"[session:{session_id}]" FER={results.get('fer_emotion')}, SER={results.get('ser_emotion')}, STT_len={len(results.get('stt_text', ''))}")
 
         fer_emotion = results.get("fer_emotion", "Neutral")
         ser_emotion = results.get("ser_emotion", "Neutral")
         stt_text = results.get("stt_text", "")
 
-        print(f"[VideoSession {session_id}] Running LLM fusion...")
+        log.info(f"[session:{session_id}]" Running LLM fusion...")
         fusion_result = fusion_agent.fuse_inputs_fast(fer_emotion, ser_emotion, stt_text)
         if not isinstance(fusion_result, dict):
             fusion_result = {"distress": 50, "response": str(fusion_result)}
@@ -322,37 +325,37 @@ def process_video_in_thread(session_id, video_path):
         results["llm_response"] = response
         results["status"] = "completed"
 
-        print(f"[VideoSession {session_id}] Completed! Distress={distress}, Response={response[:80]}...")
+        log.info(f"[session:{session_id}]" Completed! Distress={distress}, Response={response[:80]}...")
 
         # Trigger TTS for video session results too
-        print(f"[VideoSession {session_id}] TTS check: backend={TTS_BACKEND}, has_response={bool(response)}")
+        log.info(f"[session:{session_id}]" TTS check: backend={TTS_BACKEND}, has_response={bool(response)}")
         tts_audio_b64 = None
         tts_audio_url = None
         tts_audio_mime = "audio/wav"
 
         if response and TTS_BACKEND == "gemini":
-            print(f"[VideoSession {session_id}] Triggering TTS SYNC (blocking)...")
+            log.info(f"[session:{session_id}]" Triggering TTS SYNC (blocking)...")
             try:
                 filepath, mime, audio_b64 = tts_engine.generate_sync(response)
                 if filepath:
-                    print(f"[VideoSession {session_id}] TTS SUCCESS: {filepath}")
+                    log.info(f"[session:{session_id}]" TTS SUCCESS: {filepath}")
                     _on_tts_done(filepath, mime, audio_b64)
                     tts_audio_b64 = audio_b64
                     tts_audio_url = f"/api/tts/latest?t={int(time.time())}"
                     tts_audio_mime = mime
                 else:
-                    print(f"[VideoSession {session_id}] TTS FAILED: generate_sync returned None")
+                    log.info(f"[session:{session_id}]" TTS FAILED: generate_sync returned None")
             except Exception as e:
-                print(f"[VideoSession {session_id}] TTS ERROR: {e}")
+                log.info(f"[session:{session_id}]" TTS ERROR: {e}")
                 import traceback
                 traceback.print_exc()
             _cleanup_old_tts()
         elif response:
-            print(f"[VideoSession {session_id}] Triggering async TTS...")
+            log.info(f"[session:{session_id}]" Triggering async TTS...")
             tts_engine.speak(response, on_done=_on_tts_done)
             _cleanup_old_tts()
         else:
-            print(f"[VideoSession {session_id}] Skipping TTS — no response text.")
+            log.info(f"[session:{session_id}]" Skipping TTS — no response text.")
 
         # Embed TTS info into video session results so the frontend gets it
         results["tts_audio_url"] = tts_audio_url
@@ -364,7 +367,7 @@ def process_video_in_thread(session_id, video_path):
 
     except Exception as e:
         import traceback
-        print(f"[VideoSession {session_id}] ERROR: {e}")
+        log.info(f"[session:{session_id}]" ERROR: {e}")
         traceback.print_exc()
         with video_session_lock:
             video_session_results[session_id]["status"] = f"error: {str(e)}"
@@ -455,7 +458,7 @@ def chat_message(data: dict):
                     tts_url = f"/api/tts/latest?t={int(time.time())}"
                     tts_b64 = audio_b64
             except Exception as e:
-                print(f"[Chat] TTS error: {e}")
+                log.error(f" {e}")
 
         return {
             "response": response,
@@ -467,7 +470,7 @@ def chat_message(data: dict):
             "rag_sources": []
         }
     except Exception as e:
-        print(f"[Chat] Error: {e}")
+        log.error(f" {e}")
         return {
             "response": "I'm here with you. Tell me more about how you're feeling.",
             "distress": 30,
@@ -519,7 +522,7 @@ async def voice_note(audio: UploadFile = File(...)):
 
         return {"transcript": transcript, "emotion": emotion}
     except Exception as e:
-        print(f"[VoiceNote] Error: {e}")
+        log.error(f" {e}")
         return {"transcript": "", "emotion": "Unavailable"}
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -533,7 +536,7 @@ async def voice_note(audio: UploadFile = File(...)):
 def send_summary(data: dict):
     email = data.get("email", "")
     summary = data.get("summary", {})
-    print(f"[Email] Would send summary to {email}: {str(summary)[:200]}...")
+    log.info(f" Would send summary to {email}: {str(summary)[:200]}...")
     return {"status": "ok", "to": email, "message": "Summary queued for delivery"}
 
 
@@ -558,7 +561,7 @@ def test_tts(text: str = "Hello, I am your AI therapist. How are you feeling tod
     """Manually trigger async TTS for testing purposes."""
     if not text:
         return {"status": "error", "message": "No text provided"}
-    print(f"[TTS Test] Triggering async TTS for: {text[:100]}...")
+    log.info(f" Triggering async TTS for: {text[:100]}...")
     tts_engine.speak(text, on_done=_on_tts_done)
     return {"status": "tts_triggered", "text": text, "backend": TTS_BACKEND}
 
@@ -574,7 +577,7 @@ def debug_tts(text: str = "Hello, I am your AI therapist. How are you feeling to
     if TTS_BACKEND != "gemini":
         return {"status": "error", "message": f"TTS_BACKEND is '{TTS_BACKEND}', set to 'gemini' to test."}
 
-    print(f"[TTS Debug] SYNC generating for: {text[:100]}...")
+    log.info(f" SYNC generating for: {text[:100]}...")
     try:
         filepath, mime, audio_b64 = tts_engine.generate_sync(text)
         if filepath:
@@ -591,7 +594,7 @@ def debug_tts(text: str = "Hello, I am your AI therapist. How are you feeling to
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
-        print(f"[TTS Debug] EXCEPTION: {e}\n{tb}")
+        log.info(f" EXCEPTION: {e}\n{tb}")
         return {"status": "error", "message": str(e), "traceback": tb}
 
 
@@ -744,7 +747,7 @@ def session_report(data: dict):
         if report:
             return {"status": "ok", "report": report, "source": "llm"}
     except Exception as e:
-        print(f"[Report] LLM failed: {e}")
+        log.warning(f" {e}")
 
     return {"status": "ok", "report": None, "source": "fallback", "data": summary}
 

@@ -6,6 +6,10 @@ from collections import deque
 from modules.voice.ser_model import SERInference, NUM_SAMPLES
 from modules.voice.stt_engine import STTEngine
 
+from modules.logging import get_logger
+log = get_logger("voice")
+
+
 class VoiceEmotionAnalyzer:
     def __init__(self, rate=16000, chunk=1024):
         self.rate = rate
@@ -60,15 +64,15 @@ class VoiceEmotionAnalyzer:
                                       input=True,
                                       frames_per_buffer=self.chunk)
             self.audio_available = True
-            print("[Voice] Audio device initialized successfully")
+            log.info("[Voice] Audio device initialized successfully")
             self._running = True
             self._capture_thread = threading.Thread(target=self._audio_capture_loop, daemon=True)
             self._capture_thread.start()
             self._stt_thread = threading.Thread(target=self._stt_loop, daemon=True)
             self._stt_thread.start()
         except Exception as e:
-            print(f"[Voice] Audio device not available: {e}")
-            print("[Voice] Running in browser-audio mode. Send audio via /api/browser-audio.")
+            log.info(f" Audio device not available: {e}")
+            log.info("[Voice] Running in browser-audio mode. Send audio via /api/browser-audio.")
             self.audio_available = False
             self._running = True
             self._stt_thread = threading.Thread(target=self._stt_loop, daemon=True)
@@ -119,7 +123,7 @@ class VoiceEmotionAnalyzer:
                         self._process_speech_segment()
 
             except Exception as e:
-                print(f"[Voice] Capture error: {e}")
+                log.info(f" Capture error: {e}")
                 time.sleep(0.1)
 
     def feed_browser_audio(self, audio_np):
@@ -180,7 +184,7 @@ class VoiceEmotionAnalyzer:
         if text:
             with self.transcript_lock:
                 self.latest_transcript = text
-            print(f"[STT] {text}")
+            log.info(f" {text}")
 
     def _process_browser_speech(self):
         if not self.browser_speech_buffer:
@@ -193,7 +197,7 @@ class VoiceEmotionAnalyzer:
         if text:
             with self.transcript_lock:
                 self.latest_transcript = text
-            print(f"[STT] {text}")
+            log.info(f" {text}")
 
     def _stt_loop(self):
         while self._running:
@@ -214,7 +218,7 @@ class VoiceEmotionAnalyzer:
             if text:
                 with self.transcript_lock:
                     self.latest_transcript = text
-                print(f"[STT] {text}")
+                log.info(f" {text}")
 
     def _get_audio_segment(self):
         src = "mic"
@@ -257,7 +261,7 @@ class VoiceEmotionAnalyzer:
                 self.latest_emotion = emotion
             return self.latest_emotion
         except Exception as e:
-            print(f"[Voice] SER error: {e}")
+            log.info(f" SER error: {e}")
             return self.latest_emotion
 
     def get_latest_transcript(self):

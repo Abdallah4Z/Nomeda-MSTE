@@ -5,6 +5,9 @@ import torchaudio
 import numpy as np
 from transformers import Wav2Vec2FeatureExtractor, WavLMModel, HubertModel
 
+from modules.logging import get_logger
+log = get_logger("ser")
+
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 SAMPLE_RATE = 16000
 CREMA_D_DURATION = 3.0
@@ -115,7 +118,7 @@ class SERInference:
 
     def _load_model(self):
         if not os.path.exists(self.model_path):
-            print(f"[SER] Model not found at {self.model_path}. SER will be unavailable.")
+            log.warning(f"Model not found at {self.model_path}. SER will be unavailable.")
             return
 
         try:
@@ -133,9 +136,9 @@ class SERInference:
             self.model.load_state_dict(checkpoint['model_state_dict'], strict=True)
             self.model.to(self.device)
             self.model.eval()
-            print(f"[SER] Loaded fusion model with classes: {self.label_classes}")
+            log.info(f"Loaded fusion model with classes: {self.label_classes}")
         except Exception as e:
-            print(f"[SER] Failed to load fusion model: {e}")
+            log.error(f"Failed to load fusion model: {e}")
             self.model = None
 
     def predict(self, waveform_np, sr=SAMPLE_RATE):
@@ -173,7 +176,7 @@ class SERInference:
                 emotion = self.label_classes[pred_idx] if self.label_classes else str(pred_idx)
             return emotion.capitalize(), confidence
         except Exception as e:
-            print(f"[SER] Inference error: {e}")
+            log.error(f"Inference error: {e}")
             return "Error", 0.0
 
     def predict_batch(self, waveform_np, sr=SAMPLE_RATE, chunk_size=NUM_SAMPLES, hop_size=None, min_confidence=0.30):

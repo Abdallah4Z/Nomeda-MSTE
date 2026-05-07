@@ -14,6 +14,10 @@ from .vector_store import HybridVectorStore
 from .reranker import CrossEncoderReranker
 from .retriever import Retriever
 
+from modules.logging import get_logger
+log = get_logger("rag")
+
+
 
 @dataclass
 class RAGResult:
@@ -43,9 +47,9 @@ class RAGPipeline:
         self.vector_store = HybridVectorStore.load(self.config)
         if self.vector_store.is_loaded():
             self.retriever = Retriever(self.config, self.vector_store, self.embed_manager, self.reranker)
-            print("[+] RAG retriever ready")
+            log.info("[+] RAG retriever ready")
         else:
-            print("[!] No RAG index found. Run build_rag.py first or place indexed files in data/rag_index/")
+            log.info("[!] No RAG index found. Run build_rag.py first or place indexed files in data/rag_index/")
 
     @property
     def llm(self):
@@ -67,11 +71,11 @@ class RAGPipeline:
         if repo_path.exists():
             has_weights = any(repo_path.glob("*.safetensors")) or any(repo_path.glob("*.bin"))
             if not has_weights:
-                print(f"[!] Model config found but weights missing at {repo}. LLM generation disabled.")
+                log.info(f"[!] Model config found but weights missing at {repo}. LLM generation disabled.")
                 self._tokenizer = AutoTokenizer.from_pretrained(repo, trust_remote_code=True)
                 self._llm = None
                 return
-        print(f"[+] Loading FP16 model: {repo}")
+        log.info(f"[+] Loading FP16 model: {repo}")
         self._tokenizer = AutoTokenizer.from_pretrained(repo, trust_remote_code=True)
         try:
             self._llm = AutoModelForCausalLM.from_pretrained(
@@ -85,10 +89,10 @@ class RAGPipeline:
             if torch.cuda.is_available():
                 for i in range(torch.cuda.device_count()):
                     free, total = torch.cuda.mem_get_info(i)
-                    print(f"  GPU {i}: {(total - free) / 1e9:.2f}GB used / {total / 1e9:.2f}GB total")
-            print("[+] Model loaded")
+                    log.info(f"  GPU {i}: {(total - free) / 1e9:.2f}GB used / {total / 1e9:.2f}GB total")
+            log.info("[+] Model loaded")
         except Exception as e:
-            print(f"[!] Failed to load LLM: {e}. Running without generation.")
+            log.info(f"[!] Failed to load LLM: {e}. Running without generation.")
             self._llm = None
 
     def _clean_response(self, text: str) -> str:

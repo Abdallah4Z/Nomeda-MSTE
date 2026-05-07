@@ -2,6 +2,9 @@ import os
 import numpy as np
 import torch
 
+from modules.logging import get_logger
+log = get_logger("stt")
+
 class STTEngine:
     def __init__(self, model_size="tiny", device="cuda"):
         self.model = None
@@ -27,9 +30,9 @@ class STTEngine:
                 self.device = "cpu"
                 compute_type = "int8"
             self.model = WhisperModel(self.model_size, device=self.device, compute_type=compute_type)
-            print(f"[STT] Loaded Whisper {self.model_size} on {self.device} ({compute_type})")
+            log.info(f" Loaded Whisper {self.model_size} on {self.device} ({compute_type})")
         except Exception as e:
-            print(f"[STT] Failed to load Whisper: {e}")
+            log.info(f" Failed to load Whisper: {e}")
             self.model = None
 
     def transcribe(self, audio_np, sr=16000):
@@ -46,5 +49,5 @@ class STTEngine:
             text = " ".join([seg.text for seg in segments]).strip()
             return text
         except Exception as e:
-            print(f"[STT] Transcription error: {e}")
+            log.info(f" Transcription error: {e}")
             return ""

@@ -7,11 +7,14 @@ import base64
 from pathlib import Path
 from datetime import datetime
 
+from modules.logging import get_logger
+log = get_logger("tts")
+
 TTS_BACKEND = os.getenv("TTS_BACKEND", "qwen").strip().lower()
 _google_key = os.getenv("GOOGLE_API_KEY", "")
 if _google_key and _google_key not in ("", "your_google_api_key_here", "your_key_here"):
     TTS_BACKEND = "gemini"
-    print(f"[TTSEngine] GOOGLE_API_KEY detected — using Gemini TTS backend")
+    log.info(f"[TTSEngine] GOOGLE_API_KEY detected — using Gemini TTS backend")
 
 TTS_OUTPUT_DIR = Path(os.getenv("TTS_OUTPUT_DIR", "data/tts"))
 TTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -38,7 +41,7 @@ class LocalTTSEngine:
             for voice in voices:
                 if 'female' in str(voice.name).lower() or 'natasha' in str(voice.id).lower() or 'zira' in str(voice.name).lower():
                     self.engine.setProperty('voice', voice.id)
-                    print(f"[LocalTTS] Selected voice: {voice.name}")
+                    log.info(f"[LocalTTS] Selected voice: {voice.name}")
                     break
             else:
                 # Fallback: try any English voice
@@ -47,9 +50,9 @@ class LocalTTSEngine:
                         self.engine.setProperty('voice', voice.id)
                         break
             self.is_speaking = False
-            print(f"[LocalTTS] Initialized — rate={rate}, voices_available={len(voices)}")
+            log.info(f"[LocalTTS] Initialized — rate={rate}, voices_available={len(voices)}")
         except Exception as e:
-            print(f"[LocalTTS] Initialization Error: {e}")
+            log.info(f"[LocalTTS] Initialization Error: {e}")
             self.engine = None
 
     def speak(self, text, on_done=None):
@@ -65,7 +68,7 @@ class LocalTTSEngine:
                 if on_done:
                     on_done(None, "audio/wav", None)
             except Exception as e:
-                print(f"[LocalTTS] Error: {e}")
+                log.info(f"[LocalTTS] Error: {e}")
             finally:
                 self.is_speaking = False
 
@@ -88,15 +91,15 @@ class GeminiTTSEngine:
         self._client = None
 
         if not self.api_key:
-            print("[GeminiTTS] WARNING: GOOGLE_API_KEY not set. Gemini TTS will fail.")
+            log.info("[GeminiTTS] WARNING: GOOGLE_API_KEY not set. Gemini TTS will fail.")
             return
 
         try:
             from google import genai
             self._client = genai.Client(api_key=self.api_key)
-            print(f"[GeminiTTS] google-genai SDK initialized. Model: {self.model_name}, Voice: {self.voice_name}")
+            log.info(f"[GeminiTTS] google-genai SDK initialized. Model: {self.model_name}, Voice: {self.voice_name}")
         except Exception as e:
-            print(f"[GeminiTTS] ERROR: google-genai SDK failed to init: {e}")
+            log.info(f"[GeminiTTS] ERROR: google-genai SDK failed to init: {e}")
             self._client = None
 
     def speak(self, text, on_done=None):
@@ -107,7 +110,7 @@ class GeminiTTSEngine:
                 if on_done:
                     on_done(filepath, mime, audio_b64)
             except Exception as e:
-                print(f"[GeminiTTS] Thread error: {e}")
+                log.info(f"[GeminiTTS] Thread error: {e}")
                 import traceback
                 traceback.print_exc()
                 if on_done:
@@ -119,16 +122,16 @@ class GeminiTTSEngine:
         SYNCHRONOUSLY generate TTS audio.
         Returns (wav_filepath, mime_type, audio_base64).
         """
-        print(f"[GeminiTTS] === SYNC GENERATE START ===")
-        print(f"[GeminiTTS] Text ({len(text)} chars): {text[:120]}...")
+        log.info(f"[GeminiTTS] === SYNC GENERATE START ===")
+        log.info(f"[GeminiTTS] Text ({len(text)} chars): {text[:120]}...")
 
         if not text or not self.api_key or self._client is None:
-            print("[GeminiTTS] ERROR: No text, no API key, or SDK not initialized.")
+            log.info("[GeminiTTS] ERROR: No text, no API key, or SDK not initialized.")
             return None, "audio/wav", None
 
         from google.genai import types
 
-        print(f"[GeminiTTS] Calling model={self.model_name} with voice={self.voice_name}")
+        log.info(f"[GeminiTTS] Calling model={self.model_name} with voice={self.voice_name}")
 
         response = self._client.models.generate_content(
             model=self.model_name,
@@ -147,32 +150,32 @@ class GeminiTTSEngine:
 
         # Extract raw PCM audio data
         if not response.candidates:
-            print("[GeminiTTS] ERROR: No candidates in response.")
+            log.info("[GeminiTTS] ERROR: No candidates in response.")
             return None, "audio/wav", None
 
         candidate = response.candidates[0]
         if not candidate.content or not candidate.content.parts:
-            print("[GeminiTTS] ERROR: No content parts in response.")
+            log.info("[GeminiTTS] ERROR: No content parts in response.")
             return None, "audio/wav", None
 
         part = candidate.content.parts[0]
         if not hasattr(part, "inline_data") or not part.inline_data:
-            print("[GeminiTTS] ERROR: No inline_data in first part.")
+            log.info("[GeminiTTS] ERROR: No inline_data in first part.")
             return None, "audio/wav", None
 
         pcm_data = part.inline_data.data
-        print(f"[GeminiTTS] Received {len(pcm_data)} bytes of raw PCM audio.")
+        log.info(f"[GeminiTTS] Received {len(pcm_data)} bytes of raw PCM audio.")
 
         # Save as proper WAV file (Gemini returns raw PCM: 24000Hz, 16-bit, mono)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         filename = f"response_{ts}.wav"
         filepath = TTS_OUTPUT_DIR / filename
         _save_pcm_as_wav(filepath, pcm_data)
-        print(f"[GeminiTTS] Saved WAV: {filepath}")
+        log.info(f"[GeminiTTS] Saved WAV: {filepath}")
 
         latest_path = TTS_OUTPUT_DIR / "latest.wav"
         _save_pcm_as_wav(latest_path, pcm_data)
-        print(f"[GeminiTTS] Saved latest WAV: {latest_path}")
+        log.info(f"[GeminiTTS] Saved latest WAV: {latest_path}")
 
         with self._lock:
             self.latest_audio_path = str(filepath)
@@ -182,7 +185,7 @@ class GeminiTTSEngine:
         with open(filepath, "rb") as f:
             audio_b64 = base64.b64encode(f.read()).decode("utf-8")
 
-        print(f"[GeminiTTS] === SYNC GENERATE DONE ===")
+        log.info(f"[GeminiTTS] === SYNC GENERATE DONE ===")
         return str(latest_path), "audio/wav", audio_b64
 
     def _try_play_local(self, filepath):
@@ -220,14 +223,14 @@ class TTSEngine:
             try:
                 from modules.tts.qwen_tts import QwenTTS
                 self._engine = QwenTTS()
-                print(f"[TTSEngine] Qwen TTS loaded as primary backend")
+                log.info(f"[TTSEngine] Qwen TTS loaded as primary backend")
             except Exception as e:
-                print(f"[TTSEngine] Qwen TTS failed: {e}. Falling back to local.")
+                log.info(f"[TTSEngine] Qwen TTS failed: {e}. Falling back to local.")
                 self._engine = LocalTTSEngine(rate=rate)
         else:
             self._engine = LocalTTSEngine(rate=rate)
             if getattr(self._engine, "engine", None) is None:
-                print("[TTSEngine] Local TTS failed. Set TTS_BACKEND=qwen or TTS_BACKEND=gemini with GOOGLE_API_KEY.")
+                log.info("[TTSEngine] Local TTS failed. Set TTS_BACKEND=qwen or TTS_BACKEND=gemini with GOOGLE_API_KEY.")
 
     def speak(self, text, on_done=None):
         if self._engine:
@@ -243,7 +246,7 @@ class TTSEngine:
         """Synchronous generation — blocks caller thread. Use for debugging only."""
         if isinstance(self._engine, GeminiTTSEngine):
             return self._engine.generate_sync(text)
-        print("[TTSEngine] generate_sync only available for Gemini backend.")
+        log.info("[TTSEngine] generate_sync only available for Gemini backend.")
         return None, "audio/wav", None
 
     @property
@@ -263,7 +266,7 @@ class TTSEngine:
 
 if __name__ == "__main__":
     def done(path, mime, b64):
-        print(f"Done: {path}, {mime}, b64_len={len(b64) if b64 else 0}")
+        log.info(f"Done: {path}, {mime}, b64_len={len(b64) if b64 else 0}")
 
     tts = TTSEngine()
     tts.speak("Hello, I am your AI therapist.", on_done=done)
