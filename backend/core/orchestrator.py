@@ -24,6 +24,7 @@ class Orchestrator:
         event_bus: Optional[EventBus] = None,
         tts_distress_threshold: int = 0,
         rag_relevance_threshold: float = 1.0,
+        runtime_config: Optional["RuntimeConfig"] = None,
     ):
         self._llm = llm
         self._tts = tts
@@ -35,6 +36,7 @@ class Orchestrator:
         self._event_bus = event_bus
         self._tts_distress_threshold = tts_distress_threshold
         self._rag_relevance_threshold = rag_relevance_threshold
+        self._runtime_config = runtime_config
 
     async def process_chat_message(
         self,
@@ -53,7 +55,10 @@ class Orchestrator:
             try:
                 results = await self._rag.search(text, top_k=3)
                 if results:
-                    filtered = [r for r in results if r.score <= self._rag_relevance_threshold]
+                    threshold = self._rag_relevance_threshold
+                    if self._runtime_config:
+                        threshold = self._runtime_config.rag_relevance_threshold
+                    filtered = [r for r in results if r.score <= threshold]
                     rag_sources = [{"text": r.text, "score": r.score, "metadata": r.metadata} for r in filtered]
                     if filtered:
                         rag_context = await self._rag.format_context(text)

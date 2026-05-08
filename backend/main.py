@@ -17,6 +17,7 @@ from .core.orchestrator import Orchestrator
 from .core.state import system_state
 from .storage.csv_store import CSVSessionStore
 from .api.routes import session_router, chat_router, media_router, admin_router, tts_router
+from .api.routes.config import router as config_router
 from .api.websocket import router as ws_router
 from .utils.logging import setup_logging, get_logger
 
@@ -122,6 +123,7 @@ def create_container(settings: Settings) -> Container:
         event_bus=container.event_bus,
         tts_distress_threshold=settings.tts.distress_threshold,
         rag_relevance_threshold=1.0,
+        runtime_config=container.runtime_config,
     )
     container.orchestrator = orchestrator
 
@@ -216,4 +218,5 @@ app.include_router(chat_router)
 app.include_router(media_router)
 app.include_router(admin_router)
 app.include_router(tts_router)
+app.include_router(config_router)
 app.include_router(ws_router)

@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional, Type
 
 from ..config import Settings
+from ..config.runtime import RuntimeConfig
 from ..providers.base import BaseProvider, ProviderRegistry
 from ..providers.llm import LLMProvider
 from ..providers.tts import TTSProvider
@@ -22,6 +23,7 @@ class Container:
         self._session_manager: Optional[SessionManager] = None
         self._orchestrator: Optional[Orchestrator] = None
         self._store: Optional[SessionStore] = None
+        self._runtime_config = RuntimeConfig()
 
     def register_provider(self, capability: str, provider: BaseProvider):
         self._providers[capability] = provider
@@ -78,6 +80,10 @@ class Container:
     @property
     def settings(self) -> Settings:
         return self._settings
+
+    @property
+    def runtime_config(self) -> RuntimeConfig:
+        return self._runtime_config
 
     async def startup(self):
         for name, provider in self._providers.items():

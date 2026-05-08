@@ -77,6 +77,9 @@ function initVoiceRecord(btnEl, onResult) {
   btnEl.onpointerdown = async function (e) {
     e.preventDefault();
     if (recording) return;
+    // Stop any playing TTS before recording
+    if (state.currentAudio) { state.currentAudio.pause(); state.currentAudio = null; }
+    if (typeof Face !== 'undefined') { Face.stopTalking(); Face.setExpression('listening'); }
     recording = true;
     btnEl.classList.add('recording');
     var span = btnEl.querySelector('span');
@@ -263,6 +266,7 @@ function connectWS() {
 
         // Update timeline chart
         updateTimeline(d.voice_emotion, d.video_emotion, d.distress);
+        if (typeof updatePanelSession !== 'undefined') updatePanelSession(d);
       }
     } catch (_) { /* ignore */ }
   };

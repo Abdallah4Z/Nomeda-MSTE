@@ -26,7 +26,8 @@ const state = {
   mediaRecorder: null,
   audioChunks: [],
   recordingStream: null,
-  msgCounter: 0
+  msgCounter: 0,
+  runtimeConfig: {}
 };
 
 // ── DOM Cache ──
@@ -40,9 +41,30 @@ function hideSplash() {
   setTimeout(function () { el.style.display = 'none'; }, 600);
 }
 
+// ── Runtime Config ──
+async function loadConfig() {
+  try {
+    var res = await fetch('/api/config');
+    if (res.ok) {
+      var cfg = await res.json();
+      state.runtimeConfig = cfg;
+      // Sync panel controls
+      var ap = $('cfgTtsAutoPlay');
+      if (ap) ap.checked = cfg['tts.auto_play'] !== false;
+      var fi = $('cfgFrameInterval');
+      if (fi && cfg['camera.frame_interval_ms']) fi.value = cfg['camera.frame_interval_ms'];
+      var av = $('cfgAnimSpeed');
+      if (av && cfg['face.anim_speed_ms']) av.value = cfg['face.anim_speed_ms'];
+      var rt = $('cfgRagThreshold');
+      if (rt && cfg['rag.relevance_threshold']) rt.value = cfg['rag.relevance_threshold'];
+    }
+  } catch (e) { /* use defaults */ }
+}
+
 // ── Init ──
 document.addEventListener('DOMContentLoaded', function () {
   try {
+    loadConfig();
     if (location.search.indexOf('reset') >= 0) {
       localStorage.removeItem('nomeda_skip_checkin');
     }
@@ -102,6 +124,7 @@ function showChat() {
   initChatVoice();
   initTimeline();
   initTimelineChart();
+  initPanel();
 }
 
 function showSummary(data) {
@@ -271,7 +294,8 @@ async function sendMessage(text) {
       addMessage(msg);
       if (msg.ttsAudio || msg.ttsAudioUrl) {
         Face.setExpression('talking');
-        playTTS(msg);
+        var cfg = state.runtimeConfig || {};
+        if (cfg['tts.auto_play'] !== false) playTTS(msg);
       } else {
         Face.setExpression('talking');
         setTimeout(function () { Face.setExpression('listening'); }, Math.min(3000, (data.response || '').length * 25));
@@ -377,6 +401,64 @@ function playTTS(msg) {
     Face.stopTalking();
     Face.setExpression('listening');
   }
+}
+
+// ── Right Panel ──
+function initPanel() {
+  $('panelToggle').onclick = function() { togglePanel(true); };
+  $('panelClose').onclick = function() { togglePanel(false); };
+  $('panelOverlay').onclick = function() { togglePanel(false); };
+
+  document.querySelectorAll('.panel-section-header').forEach(function(h) {
+    h.onclick = function() { h.classList.toggle('collapsed'); };
+  });
+
+  // Config controls
+  $('cfgTtsAutoPlay').onchange = function() {
+    fetch('/api/config', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({'tts.auto_play': this.checked}) });
+  };
+  $('cfgFrameInterval').oninput = function() {
+    $('cfgFrameVal').textContent = this.value + 'ms';
+    fetch('/api/config', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({'camera.frame_interval_ms': parseInt(this.value)}) });
+  };
+  $('cfgAnimSpeed').oninput = function() {
+    $('cfgAnimVal').textContent = this.value + 'ms';
+    fetch('/api/config', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({'face.anim_speed_ms': parseInt(this.value)}) });
+  };
+  $('cfgRagThreshold').oninput = function() {
+    $('cfgRagVal').textContent = parseFloat(this.value).toFixed(1);
+    fetch('/api/config', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({'rag.relevance_threshold': parseFloat(this.value)}) });
+  };
+}
+
+function togglePanel(open) {
+  var p = $('rightPanel'), o = $('panelOverlay');
+  if (!p) return;
+  p.classList.toggle('open', open);
+  o.classList.toggle('open', open);
+  if (open) loadPanelData();
+}
+
+function loadPanelData() {
+  loadConfig();
+  loadSystemStatus();
+}
+
+function updatePanelSession(d) {
+  $('panelDuration').textContent = $('timerDisplay').textContent;
+  $('panelDistress').textContent = d.distress != null ? d.distress : '--';
+  $('panelFace').textContent = d.video_emotion && d.video_emotion !== 'Idle' ? d.video_emotion : '--';
+  $('panelVoice').textContent = d.voice_emotion && d.voice_emotion !== 'Idle' ? d.voice_emotion : '--';
+  $('panelMessages').textContent = state.session.messages.length;
+}
+
+function loadSystemStatus() {
+  fetch('/api/admin/models').then(function(r) { return r.json(); }).then(function(d) {
+    d.models.forEach(function(m) {
+      var el = document.getElementById('sys' + m.name.charAt(0).toUpperCase() + m.name.slice(1));
+      if (el) { el.textContent = m.status; el.className = 'status-badge ' + m.status; }
+    });
+  }).catch(function() {});
 }
 
 // ── Timer ──

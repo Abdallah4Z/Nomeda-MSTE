@@ -87,6 +87,12 @@
         <span id="timerDisplay">00:00</span>
       </div>
       <div class="header-actions">
+        <button class="btn-icon" id="panelToggle" title="Settings Panel">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+          </svg>
+        </button>
         <button class="btn-icon" id="summaryBtn" title="Session Summary">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
@@ -185,6 +191,76 @@
         </svg>
       </button>
     </div>
+
+    <!-- ═══ RIGHT PANEL ═══ -->
+    <div class="right-panel" id="rightPanel">
+      <div class="panel-header">
+        <span>Settings</span>
+        <button class="panel-close" id="panelClose">
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="panel-body">
+        <div class="panel-section">
+          <div class="panel-section-header" data-section="session">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            <span>Session</span>
+            <svg class="icon-sm chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="panel-section-body">
+            <div class="panel-stat"><span>Duration</span><span id="panelDuration">00:00</span></div>
+            <div class="panel-stat"><span>Messages</span><span id="panelMessages">0</span></div>
+            <div class="panel-stat"><span>Distress</span><span id="panelDistress">0</span></div>
+            <div class="panel-stat"><span>Face</span><span id="panelFace">--</span></div>
+            <div class="panel-stat"><span>Voice</span><span id="panelVoice">--</span></div>
+          </div>
+        </div>
+        <div class="panel-section">
+          <div class="panel-section-header" data-section="config">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            <span>Configuration</span>
+            <svg class="icon-sm chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="panel-section-body">
+            <div class="panel-field">
+              <label>TTS Auto-play</label>
+              <label class="toggle"><input type="checkbox" id="cfgTtsAutoPlay"><span class="slider"></span></label>
+            </div>
+            <div class="panel-field">
+              <label>Frame Interval <span id="cfgFrameVal">100ms</span></label>
+              <input type="range" id="cfgFrameInterval" min="50" max="500" step="50" value="100">
+            </div>
+            <div class="panel-field">
+              <label>Anim Speed <span id="cfgAnimVal">700ms</span></label>
+              <input type="range" id="cfgAnimSpeed" min="200" max="2000" step="100" value="700">
+            </div>
+            <div class="panel-field">
+              <label>RAG Threshold <span id="cfgRagVal">1.0</span></label>
+              <input type="range" id="cfgRagThreshold" min="0" max="2" step="0.1" value="1.0">
+            </div>
+          </div>
+        </div>
+        <div class="panel-section">
+          <div class="panel-section-header" data-section="system">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            <span>System</span>
+            <svg class="icon-sm chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="panel-section-body" id="panelSystemBody">
+            <div class="panel-stat"><span>LLM</span><span class="status-badge" id="sysLlm">--</span></div>
+            <div class="panel-stat"><span>TTS</span><span class="status-badge" id="sysTts">--</span></div>
+            <div class="panel-stat"><span>STT</span><span class="status-badge" id="sysStt">--</span></div>
+            <div class="panel-stat"><span>SER</span><span class="status-badge" id="sysSer">--</span></div>
+            <div class="panel-stat"><span>FER</span><span class="status-badge" id="sysFer">--</span></div>
+            <div class="panel-stat"><span>RAG</span><span class="status-badge" id="sysRag">--</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-overlay" id="panelOverlay"></div>
+
   </div>
 
   <!-- ═══ SCREEN 3: SUMMARY ═══ -->
