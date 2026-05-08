@@ -134,31 +134,49 @@ function showSummary(data) {
 
 function showEnd(data) {
   showScreen('screen-end');
-  // Populate stats
   $('endStatDuration').textContent = formatDuration(data.duration_seconds || 0);
   $('endStatMessages').textContent = (data.stats?.message_count || data.messages?.length || 0);
   $('endStatDistress').textContent = data.stats?.avg_distress ?? '--';
   $('endStatDominant').textContent = data.stats?.dominant_emotion || '--';
   state.sessionData = data;
 
+  // Privacy choices
+  var choice = 'anonymize';
+  function selectChoice(v) {
+    choice = v;
+    document.querySelectorAll('.end-choice').forEach(function(el) { el.classList.remove('active'); });
+    var el = document.getElementById(v === 'anonymize' ? 'endChoiceAnonymize' : 'endChoiceDelete');
+    if (el) el.classList.add('active');
+    // Disable email + download + view for delete
+    var disabled = v === 'delete';
+    $('endEmail').disabled = disabled;
+    $('endSendBtn').disabled = disabled || !$('endEmail').value.trim();
+    $('endDownloadBtn').style.opacity = disabled ? '0.4' : '1';
+    $('endViewBtn').style.opacity = disabled ? '0.4' : '1';
+  }
+  $('endChoiceAnonymize').onclick = function() { selectChoice('anonymize'); };
+  $('endChoiceDelete').onclick = function() { selectChoice('delete'); };
+  selectChoice('anonymize');
+
   // Email enable
   $('endEmail').oninput = function() {
-    $('endSendBtn').disabled = !this.value.trim();
+    $('endSendBtn').disabled = choice === 'delete' || !this.value.trim();
   };
 
   // Send email
   $('endSendBtn').onclick = function() {
     var email = $('endEmail').value.trim();
-    if (!email) return;
+    if (!email || choice === 'delete') return;
     $('endSendBtn').disabled = true;
     $('endSendBtnText').textContent = 'Sending...';
     var summary = getSessionSummary();
-    fetch('/api/session/send-summary', {
+    var endpoint = choice === 'delete' ? '/api/session/delete' : '/api/session/send-summary';
+    fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email, summary: summary })
     }).then(function(r) { return r.json(); }).then(function(d) {
-      $('endSendBtnText').textContent = d.status === 'sent' ? 'Sent!' : 'Failed';
+      $('endSendBtnText').textContent = d.status === 'sent' ? 'Sent!' : (d.status === 'saved_locally' ? 'Saved' : 'Failed');
     }).catch(function() {
       $('endSendBtnText').textContent = 'Error';
     });
@@ -166,6 +184,7 @@ function showEnd(data) {
 
   // Download
   $('endDownloadBtn').onclick = function() {
+    if (choice === 'delete') return;
     var summary = getSessionSummary();
     var blob = new Blob([JSON.stringify(summary, null, 2)], { type: 'application/json' });
     var url = URL.createObjectURL(blob);
@@ -176,25 +195,27 @@ function showEnd(data) {
 
   // View full summary
   $('endViewBtn').onclick = function() {
+    if (choice === 'delete') return;
     showSummary(state.sessionData);
   };
 
   // Back to home
-  $('endHomeBtn').onclick = goHome;
+  $('endHomeBtn').onclick = function() {
+    // If delete was chosen, call delete endpoint
+    if (choice === 'delete') {
+      fetch('/api/session/delete', { method: 'POST' }).catch(function() {});
+    }
+    goHome();
+  };
 }
 
 function getSessionSummary() {
   var data = state.sessionData || {};
-  var anonymize = $('endAnonymize')?.checked ?? true;
-  if (!anonymize) return data;
-  // Return anonymized copy
+  // anonymize: redact personal info
   var copy = JSON.parse(JSON.stringify(data));
-  if (copy.checkin) {
-    copy.checkin = { emotion: null, text: null };
-  }
+  if (copy.checkin) copy.checkin = { emotion: null, text: null };
   if (copy.messages) {
     copy.messages = copy.messages.map(function(m) {
-      // Keep only role and text, strip checkin emotion references
       return { role: m.role, text: m.text.replace(/my name is \w+/gi, 'my name is [redacted]') };
     });
   }

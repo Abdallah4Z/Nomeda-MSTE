@@ -1,0 +1,13 @@
+{
+  "session_id": "sess_a3d8fbd34b9c",
+  "duration_seconds": 1,
+  "checkin": null,
+  "messages": [],
+  "emotion_timeline": [],
+  "stats": {
+    "message_count": 0,
+    "avg_distress": 0,
+    "dominant_emotion": null
+  },
+  "timestamp": "2026-05-08T00:52:47.986174+00:00"
+}

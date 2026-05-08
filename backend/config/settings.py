@@ -131,6 +131,7 @@ class Settings(BaseSettings):
     groq_api_key: Optional[str] = None
     google_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
+    summary_webhook: Optional[str] = None
     face_analysis_url: str = "http://127.0.0.1:8001"
     camera_source: str = "browser"
     camera_id: int = 0

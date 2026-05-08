@@ -440,7 +440,8 @@ input, textarea, button { font-family: inherit; }
 
 /* ── Screen 3: Summary ── */
 
-#screen-summary {
+#screen-summary,
+#screen-end {
   position: fixed; inset: 0; z-index: 100;
   align-items: center; justify-content: center; padding: 1.5rem;
 }
@@ -661,49 +662,40 @@ input, textarea, button { font-family: inherit; }
 
 /* ── End Session Options ── */
 
-.end-options {
-  padding: 0 2rem 1rem;
-}
+.end-options { padding: 0 1.5rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
 
-.end-option {
-  background: var(--surface);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+.end-choice {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 1rem; border-radius: var(--radius-sm);
+  background: var(--surface); border: 1.5px solid var(--border);
+  cursor: pointer; transition: all 0.2s var(--easing);
 }
+.end-choice:hover { border-color: var(--border-hover); background: var(--surface-hover); }
+.end-choice.active { border-color: var(--accent); background: rgba(99,102,241,0.06); }
 
-.end-toggle {
-  display: flex; align-items: flex-start; gap: 0.75rem;
-  padding: 1rem; cursor: pointer;
-  transition: background 0.15s;
-}
-.end-toggle:hover { background: var(--surface-hover); }
-.end-toggle input[type="checkbox"] { display: none; }
-
-.end-toggle .toggle-icon {
+.end-choice-radio {
   flex-shrink: 0; width: 40px; height: 40px;
   display: flex; align-items: center; justify-content: center;
   border-radius: var(--radius-xs);
-  background: rgba(99,102,241,0.1); color: var(--accent);
-  transition: 0.2s;
+  background: rgba(99,102,241,0.1); color: var(--accent); transition: 0.2s;
 }
-.end-toggle input:checked + .toggle-icon {
-  background: rgba(52,211,153,0.15); color: var(--success);
-}
-.end-toggle .toggle-icon svg { width: 22px; height: 22px; }
+.end-choice.active .end-choice-radio { background: rgba(52,211,153,0.15); color: var(--success); }
+#endChoiceDelete.active .end-choice-radio { background: rgba(248,113,113,0.15); color: var(--danger); }
+.end-choice-radio svg { width: 22px; height: 22px; }
 
-.end-toggle .toggle-text { flex: 1; }
-.end-toggle .toggle-text strong {
-  display: block; font-size: 0.875rem; margin-bottom: 0.2rem;
-  color: var(--text); font-weight: 600;
-}
-.end-toggle .toggle-text small {
-  display: block; font-size: 0.75rem; color: var(--text-muted);
-  line-height: 1.4;
-}
+.end-choice-text { flex: 1; }
+.end-choice-text strong { display: block; font-size: 0.875rem; color: var(--text); font-weight: 600; }
+.end-choice-text small { display: block; font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; margin-top: 0.15rem; }
 
-.end-option-divider {
-  height: 1px; background: var(--border); margin: 1rem 0;
+.end-choice-check {
+  flex-shrink: 0; width: 22px; height: 22px;
+  border-radius: 50%; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center; transition: 0.2s;
 }
+.end-choice.active .end-choice-check { border-color: var(--success); background: var(--success); }
+#endChoiceDelete.active .end-choice-check { border-color: var(--danger); background: var(--danger); }
+.end-choice-check svg { width: 12px; height: 12px; color: white; display: none; }
+.end-choice.active .end-choice-check svg { display: block; }
 
 .end-email-row {
   display: flex; align-items: center; gap: 0.5rem;

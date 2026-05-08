@@ -324,17 +324,26 @@
       </div>
 
       <div class="end-options">
-        <div class="end-option">
-          <label class="end-toggle">
-            <input type="checkbox" id="endAnonymize" checked>
-            <span class="toggle-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-            </span>
-            <span class="toggle-text">
-              <strong>Keep my information anonymous</strong>
-              <small>Your name, check-in emotion, and personal details will be removed from the session record.</small>
-            </span>
-          </label>
+        <div class="end-choice" id="endChoiceAnonymize">
+          <div class="end-choice-radio">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </div>
+          <div class="end-choice-text">
+            <strong>Save anonymously</strong>
+            <small>Your session data is saved, but name, email, check-in emotion, and personal details are removed.</small>
+          </div>
+          <div class="end-choice-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+        </div>
+
+        <div class="end-choice" id="endChoiceDelete">
+          <div class="end-choice-radio">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          </div>
+          <div class="end-choice-text">
+            <strong>Delete all data</strong>
+            <small>Nothing is saved. Your session data is permanently removed and cannot be recovered.</small>
+          </div>
+          <div class="end-choice-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
         </div>
 
         <div class="end-option-divider"></div>
