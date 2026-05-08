@@ -658,3 +658,67 @@ input, textarea, button { font-family: inherit; }
 }
 .status-badge.ready { background: rgba(52,211,153,0.15); color: var(--success); }
 .status-badge.error { background: rgba(248,113,113,0.15); color: var(--danger); }
+
+/* ── End Session Options ── */
+
+.end-options {
+  padding: 0 2rem 1rem;
+}
+
+.end-option {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.end-toggle {
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  padding: 1rem; cursor: pointer;
+  transition: background 0.15s;
+}
+.end-toggle:hover { background: var(--surface-hover); }
+.end-toggle input[type="checkbox"] { display: none; }
+
+.end-toggle .toggle-icon {
+  flex-shrink: 0; width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-xs);
+  background: rgba(99,102,241,0.1); color: var(--accent);
+  transition: 0.2s;
+}
+.end-toggle input:checked + .toggle-icon {
+  background: rgba(52,211,153,0.15); color: var(--success);
+}
+.end-toggle .toggle-icon svg { width: 22px; height: 22px; }
+
+.end-toggle .toggle-text { flex: 1; }
+.end-toggle .toggle-text strong {
+  display: block; font-size: 0.875rem; margin-bottom: 0.2rem;
+  color: var(--text); font-weight: 600;
+}
+.end-toggle .toggle-text small {
+  display: block; font-size: 0.75rem; color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.end-option-divider {
+  height: 1px; background: var(--border); margin: 1rem 0;
+}
+
+.end-email-row {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+}
+.end-email-row .icon { width: 20px; height: 20px; color: var(--text-muted); flex-shrink: 0; }
+.end-email-row input {
+  flex: 1; background: transparent; border: none; color: var(--text);
+  font-size: 0.875rem; outline: none; padding: 0.5rem 0;
+}
+.end-email-row input::placeholder { color: var(--text-dim); }
+.end-email-row button { flex-shrink: 0; white-space: nowrap; }
+
+.summary-actions-row { display: grid; gap: 0.5rem; }
+#screen-end .summary-actions-row { grid-template-columns: 1fr 1fr; }
+#screen-end .summary-actions-row:last-child { margin-top: 0.5rem; grid-template-columns: 1fr; }

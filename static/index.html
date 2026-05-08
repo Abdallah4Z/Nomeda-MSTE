@@ -225,8 +225,24 @@
           </div>
           <div class="panel-section-body">
             <div class="panel-field">
+              <label>FER (Face Emotion)</label>
+              <label class="toggle"><input type="checkbox" id="cfgFerEnabled" checked><span class="slider"></span></label>
+            </div>
+            <div class="panel-field">
+              <label>SER (Voice Emotion)</label>
+              <label class="toggle"><input type="checkbox" id="cfgSerEnabled" checked><span class="slider"></span></label>
+            </div>
+            <div class="panel-field">
+              <label>TTS (Speech)</label>
+              <label class="toggle"><input type="checkbox" id="cfgTtsEnabled" checked><span class="slider"></span></label>
+            </div>
+            <div class="panel-field">
+              <label>Avatar (Face Animation)</label>
+              <label class="toggle"><input type="checkbox" id="cfgAvatarEnabled" checked><span class="slider"></span></label>
+            </div>
+            <div class="panel-field" style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.75rem">
               <label>TTS Auto-play</label>
-              <label class="toggle"><input type="checkbox" id="cfgTtsAutoPlay"><span class="slider"></span></label>
+              <label class="toggle"><input type="checkbox" id="cfgTtsAutoPlay" checked><span class="slider"></span></label>
             </div>
             <div class="panel-field">
               <label>Frame Interval <span id="cfgFrameVal">100ms</span></label>
@@ -263,13 +279,117 @@
 
   </div>
 
-  <!-- ═══ SCREEN 3: SUMMARY ═══ -->
+  <!-- ═══ SCREEN 3: END-SESSION OPTIONS ═══ -->
+  <div id="screen-end" class="screen">
+    <div class="summary-backdrop"></div>
+    <div class="summary-modal" id="endModal">
+      <div class="summary-header">
+        <h2>Session Complete</h2>
+        <p id="endSubtitle">Choose how you'd like to handle your session data.</p>
+      </div>
+
+      <div class="summary-stats" id="endStats">
+        <div class="stat-card">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <div class="stat-value" id="endStatDuration">00:00</div>
+          <div class="stat-label">Duration</div>
+        </div>
+        <div class="stat-card">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+          </svg>
+          <div class="stat-value" id="endStatMessages">0</div>
+          <div class="stat-label">Messages</div>
+        </div>
+        <div class="stat-card">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 6v6l4 2"/>
+          </svg>
+          <div class="stat-value" id="endStatDistress">0</div>
+          <div class="stat-label">Avg Distress</div>
+        </div>
+        <div class="stat-card">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+            <line x1="9" y1="9" x2="9.01" y2="9"/>
+            <line x1="15" y1="9" x2="15.01" y2="9"/>
+          </svg>
+          <div class="stat-value" id="endStatDominant">&mdash;</div>
+          <div class="stat-label">Dominant</div>
+        </div>
+      </div>
+
+      <div class="end-options">
+        <div class="end-option">
+          <label class="end-toggle">
+            <input type="checkbox" id="endAnonymize" checked>
+            <span class="toggle-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            </span>
+            <span class="toggle-text">
+              <strong>Keep my information anonymous</strong>
+              <small>Your name, check-in emotion, and personal details will be removed from the session record.</small>
+            </span>
+          </label>
+        </div>
+
+        <div class="end-option-divider"></div>
+
+        <div class="end-email-row">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+          <input type="email" id="endEmail" placeholder="Enter email to receive your session summary (optional)">
+          <button class="btn btn-primary" id="endSendBtn" disabled>
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+            <span id="endSendBtnText">Send</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="summary-actions" style="margin-top:0">
+        <div class="summary-actions-row" style="grid-template-columns:1fr 1fr">
+          <button class="btn btn-secondary" id="endDownloadBtn">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Download Summary
+          </button>
+          <button class="btn btn-primary" id="endViewBtn">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+            View Full Summary
+          </button>
+        </div>
+        <div class="summary-actions-row">
+          <button class="btn btn-secondary" id="endHomeBtn">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+            Back to Home
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SCREEN 4: FULL SUMMARY ═══ -->
   <div id="screen-summary" class="screen">
     <div class="summary-backdrop"></div>
     <div class="summary-modal" id="summaryModal">
       <div class="summary-header">
-        <h2>Session Complete</h2>
-        <p>Here's a summary of your session.</p>
+        <h2>Session Summary</h2>
+        <p>Detailed breakdown of your session.</p>
       </div>
 
       <div class="summary-stats">
@@ -290,7 +410,6 @@
         </div>
         <div class="stat-card">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
             <path d="M12 6v6l4 2"/>
           </svg>
           <div class="stat-value" id="statAvgDistress">0</div>
@@ -324,27 +443,13 @@
 
       <div class="summary-actions">
         <div class="summary-actions-row">
-          <input type="email" id="emailInput" placeholder="your@email.com">
-          <button class="btn btn-primary" id="sendSummaryBtn">
+          <button class="btn btn-secondary" id="backBtn">
             <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-              <polyline points="22,6 12,13 2,6"/>
+              <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
-            <span id="sendSummaryText">Send Summary</span>
+            Back
           </button>
-        </div>
-        <div class="summary-actions-row">
-          <button class="btn btn-download" id="downloadBtn">
-            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            <span id="downloadBtnText">Download Report</span>
-          </button>
-        </div>
-        <div class="summary-actions-row">
-          <button class="btn btn-secondary" id="homeBtn">
+          <button class="btn btn-secondary" id="homeBtn2">
             <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
               <polyline points="9 22 9 12 15 12 15 22"/>

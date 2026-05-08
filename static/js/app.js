@@ -27,7 +27,8 @@ const state = {
   audioChunks: [],
   recordingStream: null,
   msgCounter: 0,
-  runtimeConfig: {}
+  runtimeConfig: {},
+  emotionHistory: []
 };
 
 // ── DOM Cache ──
@@ -49,8 +50,12 @@ async function loadConfig() {
       var cfg = await res.json();
       state.runtimeConfig = cfg;
       // Sync panel controls
-      var ap = $('cfgTtsAutoPlay');
-      if (ap) ap.checked = cfg['tts.auto_play'] !== false;
+      function syncCfg(id, key) { var el = document.getElementById(id); if (el) el.checked = cfg[key] !== false; }
+      syncCfg('cfgFerEnabled', 'fer.enabled');
+      syncCfg('cfgSerEnabled', 'ser.enabled');
+      syncCfg('cfgTtsEnabled', 'tts.enabled');
+      syncCfg('cfgAvatarEnabled', 'avatar.enabled');
+      syncCfg('cfgTtsAutoPlay', 'tts.auto_play');
       var fi = $('cfgFrameInterval');
       if (fi && cfg['camera.frame_interval_ms']) fi.value = cfg['camera.frame_interval_ms'];
       var av = $('cfgAnimSpeed');
@@ -98,12 +103,6 @@ function showCheckin() {
   $('checkinVoiceStatus').classList.remove('visible');
   state.selectedEmotion = null;
   $('continueBtnText').textContent = 'Continue';
-  $('endBtnText').textContent = 'End';
-  $('endBtn').disabled = false;
-  $('sendSummaryText').textContent = 'Send Summary';
-  $('sendSummaryBtn').disabled = false;
-  $('copyBtnText').textContent = 'Copy';
-  $('copyBtn').classList.remove('copied');
 
   $('continueBtn').onclick = submitCheckin;
   $('skipBtn').onclick = skipCheckin;
@@ -119,7 +118,8 @@ function skipCheckin() {
 
 function showChat() {
   showScreen('screen-chat');
-  initFace();
+  var cfg = state.runtimeConfig || {};
+  if (cfg['avatar.enabled'] !== false) initFace();
   initChatInput();
   initChatVoice();
   initTimeline();
@@ -130,6 +130,76 @@ function showChat() {
 function showSummary(data) {
   showScreen('screen-summary');
   renderSummary(data);
+}
+
+function showEnd(data) {
+  showScreen('screen-end');
+  // Populate stats
+  $('endStatDuration').textContent = formatDuration(data.duration_seconds || 0);
+  $('endStatMessages').textContent = (data.stats?.message_count || data.messages?.length || 0);
+  $('endStatDistress').textContent = data.stats?.avg_distress ?? '--';
+  $('endStatDominant').textContent = data.stats?.dominant_emotion || '--';
+  state.sessionData = data;
+
+  // Email enable
+  $('endEmail').oninput = function() {
+    $('endSendBtn').disabled = !this.value.trim();
+  };
+
+  // Send email
+  $('endSendBtn').onclick = function() {
+    var email = $('endEmail').value.trim();
+    if (!email) return;
+    $('endSendBtn').disabled = true;
+    $('endSendBtnText').textContent = 'Sending...';
+    var summary = getSessionSummary();
+    fetch('/api/session/send-summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, summary: summary })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      $('endSendBtnText').textContent = d.status === 'sent' ? 'Sent!' : 'Failed';
+    }).catch(function() {
+      $('endSendBtnText').textContent = 'Error';
+    });
+  };
+
+  // Download
+  $('endDownloadBtn').onclick = function() {
+    var summary = getSessionSummary();
+    var blob = new Blob([JSON.stringify(summary, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'session_summary.json'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // View full summary
+  $('endViewBtn').onclick = function() {
+    showSummary(state.sessionData);
+  };
+
+  // Back to home
+  $('endHomeBtn').onclick = goHome;
+}
+
+function getSessionSummary() {
+  var data = state.sessionData || {};
+  var anonymize = $('endAnonymize')?.checked ?? true;
+  if (!anonymize) return data;
+  // Return anonymized copy
+  var copy = JSON.parse(JSON.stringify(data));
+  if (copy.checkin) {
+    copy.checkin = { emotion: null, text: null };
+  }
+  if (copy.messages) {
+    copy.messages = copy.messages.map(function(m) {
+      // Keep only role and text, strip checkin emotion references
+      return { role: m.role, text: m.text.replace(/my name is \w+/gi, 'my name is [redacted]') };
+    });
+  }
+  copy.anonymized = true;
+  return copy;
 }
 
 function goHome() {
@@ -191,7 +261,8 @@ async function startSessionMedia() {
     }
   }
   state.session.isRunning = true;
-  initCamera();
+  var cfg = state.runtimeConfig || {};
+  if (cfg['avatar.enabled'] !== false) initCamera();
   connectWS();
   startTimer();
 
@@ -295,7 +366,7 @@ async function sendMessage(text) {
       if (msg.ttsAudio || msg.ttsAudioUrl) {
         Face.setExpression('talking');
         var cfg = state.runtimeConfig || {};
-        if (cfg['tts.auto_play'] !== false) playTTS(msg);
+        if (cfg['tts.enabled'] !== false && cfg['tts.auto_play'] !== false) playTTS(msg);
       } else {
         Face.setExpression('talking');
         setTimeout(function () { Face.setExpression('listening'); }, Math.min(3000, (data.response || '').length * 25));
@@ -318,6 +389,8 @@ async function sendMessage(text) {
 
 function initCheckinVoice() {
   initVoiceRecord($('checkinVoiceBtn'), async function (blob) {
+    var cfg = state.runtimeConfig || {};
+    if (cfg['ser.enabled'] === false) return;
     var fd = new FormData();
     fd.append('audio', blob, 'voice.webm');
     try {
@@ -332,6 +405,8 @@ function initCheckinVoice() {
 
 function initChatVoice() {
   initVoiceRecord($('chatVoiceBtn'), async function (blob) {
+    var cfg = state.runtimeConfig || {};
+    if (cfg['ser.enabled'] === false) return;
     var fd = new FormData();
     fd.append('audio', blob, 'voice.webm');
     try {
@@ -414,9 +489,17 @@ function initPanel() {
   });
 
   // Config controls
-  $('cfgTtsAutoPlay').onchange = function() {
-    fetch('/api/config', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({'tts.auto_play': this.checked}) });
-  };
+  function cfgToggle(id, key) {
+    var el = document.getElementById(id);
+    if (el) el.onchange = function() {
+      fetch('/api/config', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({[key]: this.checked}) });
+    };
+  }
+  cfgToggle('cfgFerEnabled', 'fer.enabled');
+  cfgToggle('cfgSerEnabled', 'ser.enabled');
+  cfgToggle('cfgTtsEnabled', 'tts.enabled');
+  cfgToggle('cfgAvatarEnabled', 'avatar.enabled');
+  cfgToggle('cfgTtsAutoPlay', 'tts.auto_play');
   $('cfgFrameInterval').oninput = function() {
     $('cfgFrameVal').textContent = this.value + 'ms';
     fetch('/api/config', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({'camera.frame_interval_ms': parseInt(this.value)}) });
@@ -485,6 +568,7 @@ async function endSession() {
   stopLiveAudio();
   stopTimer();
   if (state.ws) { state.ws.close(); state.ws = null; }
+  togglePanel(false);
 
   var summary = {
     session_id: state.session.id,
@@ -492,7 +576,8 @@ async function endSession() {
     checkin: state.session.checkin,
     messages: state.session.messages,
     emotion_timeline: state.emotionHistory,
-    stats: calcStats()
+    stats: calcStats(),
+    timestamp: new Date().toISOString()
   };
 
   try {
@@ -504,16 +589,18 @@ async function endSession() {
   } catch (e) { /* use local summary */ }
 
   state.sessionData = summary;
-  showSummary(summary);
+  showEnd(summary);
 }
 
 function calcStats() {
-  var userMsgs = state.session.messages.filter(function (m) { return m.role === 'user'; });
-  var dists = state.emotionHistory.map(function (t) { return t.distress; }).filter(function (d) { return d !== undefined; });
+  var msgs = state.session.messages || [];
+  var emo = state.emotionHistory || [];
+  var userMsgs = msgs.filter(function (m) { return m.role === 'user'; });
+  var dists = emo.map(function (t) { return t.distress; }).filter(function (d) { return d !== undefined; });
   var avgDist = dists.length > 0 ? Math.round(dists.reduce(function (a, b) { return a + b; }, 0) / dists.length) : 0;
 
   var counts = {};
-  state.emotionHistory.forEach(function (t) {
+  emo.forEach(function (t) {
     if (t.face && t.face !== 'Idle') counts[t.face] = (counts[t.face] || 0) + 1;
   });
   var dominant = '\u2014';

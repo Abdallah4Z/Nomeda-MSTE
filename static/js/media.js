@@ -35,6 +35,8 @@ async function initCamera() {
 
 async function sendFrame() {
   if (!state.browserVideo || !state.browserCanvas || state.browserVideo.readyState < 2) return;
+  var cfg = state.runtimeConfig || {};
+  if (cfg['fer.enabled'] === false) return;
   const ctx = state.browserCanvas.getContext('2d');
   if (!ctx) return;
   ctx.drawImage(state.browserVideo, 0, 0, 320, 240);
