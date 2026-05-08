@@ -111,26 +111,42 @@ class SessionManager:
             session_id=self._current_session_id or "",
         ))
 
-    def add_emotion_point(self, face: Optional[str] = None, voice: Optional[str] = None, distress: int = 0):
+    def add_emotion_point(self, face: Optional[str] = None, voice: Optional[str] = None, distress: int = 0, confidence: float = 0.0):
         point = EmotionPoint(
             time=datetime.now(timezone.utc).timestamp(),
             face=face,
             voice=voice,
             distress=distress,
+            confidence=confidence,
         )
         self._emotion_history.append(point)
 
-        system_state.update({
-            "video_emotion": face,
-            "voice_emotion": voice,
-            "distress": distress,
-        })
+        update = {}
+        if face is not None:
+            update["video_emotion"] = face
+        if voice is not None:
+            update["voice_emotion"] = voice
+        update["distress"] = distress
+        system_state.update(update)
 
         self._event_bus.emit_sync(Event(
             type=EventType.EMOTION_UPDATED,
             data=point,
             session_id=self._current_session_id or "",
         ))
+
+    def get_conversation_history(self, max_exchanges: int = 10, current_text: str = "") -> list[dict]:
+        history = []
+        for msg in self._messages:
+            role = msg.get("role", "")
+            text = msg.get("text", "")
+            if role == "user" and text == current_text:
+                continue
+            if role in ("user", "ai"):
+                history.append({"role": "user" if role == "user" else "assistant", "content": text})
+        if len(history) > max_exchanges * 2:
+            history = history[-(max_exchanges * 2):]
+        return history
 
     def _calc_stats(self) -> Dict[str, Any]:
         user_msgs = [m for m in self._messages if m.get("role") == "user"]

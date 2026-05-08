@@ -86,7 +86,11 @@ def create_container(settings: Settings) -> Container:
     fer_provider_key = settings.fer.provider
     if fer_provider_key == "deepface":
         from .providers.fer.deepface import DeepFaceFERProvider
-        provider_map["fer"] = DeepFaceFERProvider(fast_mode=settings.fer.fast_mode)
+        provider_map["fer"] = DeepFaceFERProvider(
+            fast_mode=settings.fer.fast_mode,
+            num_threads=settings.fer.num_threads,
+            window_size=settings.fer.window_size,
+        )
 
     # RAG
     rag_provider_key = settings.rag.provider
@@ -117,6 +121,7 @@ def create_container(settings: Settings) -> Container:
         session=sm,
         event_bus=container.event_bus,
         tts_distress_threshold=settings.tts.distress_threshold,
+        rag_relevance_threshold=1.0,
     )
     container.orchestrator = orchestrator
 
@@ -172,13 +177,18 @@ async def read_root():
 # -- Video feed (legacy) --
 @app.get("/video_feed")
 async def video_feed():
-    from fastapi.responses import StreamingResponse
+    from fastapi.responses import StreamingResponse, Response
     import asyncio as _asyncio
     import cv2 as _cv2
 
     async def generate():
         loop = _asyncio.get_running_loop()
-        cap = await loop.run_in_executor(None, lambda: _cv2.VideoCapture(0))
+        try:
+            cap = await loop.run_in_executor(None, lambda: _cv2.VideoCapture(0))
+            if not cap or not cap.isOpened():
+                return
+        except Exception:
+            return
         try:
             while True:
                 ret, frame = await loop.run_in_executor(None, cap.read)

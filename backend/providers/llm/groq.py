@@ -63,12 +63,18 @@ class GroqLLMProvider(LLMProvider):
             return LLMResponse(text="I'm here with you.", distress=0)
 
         try:
-            from langchain.schema import HumanMessage, SystemMessage
+            from langchain_core.messages import HumanMessage, SystemMessage
 
             full_messages = [SystemMessage(content=self._system_prompt)]
             for msg in messages:
-                if msg.get("role") == "user":
+                role = msg.get("role", "user")
+                if role == "user":
                     full_messages.append(HumanMessage(content=msg["content"]))
+                elif role == "assistant":
+                    from langchain_core.messages import AIMessage
+                    full_messages.append(AIMessage(content=msg["content"]))
+                elif role == "system":
+                    full_messages.append(SystemMessage(content=msg["content"]))
 
             result = await self._client.ainvoke(
                 full_messages,
@@ -104,8 +110,8 @@ class GroqLLMProvider(LLMProvider):
         enriched_messages = list(messages)
         if context_str:
             enriched_messages.insert(0, {
-                "role": "user",
-                "content": f"[Context from monitoring system]\n{context_str}"
+                "role": "system",
+                "content": f"[REFERENCE CONTEXT — IGNORE IF NOT RELEVANT]\n{context_str}"
             })
 
         return await self.generate(enriched_messages, max_tokens, temperature)
@@ -115,6 +121,7 @@ class GroqLLMProvider(LLMProvider):
         rag = []
         clean_text = text
 
+        # Try to extract JSON from the response (the model is instructed to output JSON)
         try:
             json_match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
             if json_match:
@@ -125,16 +132,17 @@ class GroqLLMProvider(LLMProvider):
         except (json.JSONDecodeError, AttributeError):
             pass
 
+        # Fallback: keyword-based distress detection if JSON parsing didn't yield a distress score
         if distress is None:
             distress_patterns = {
-                80: re.compile(r'\b(crisis|severe|extremely|desperate)\b', re.I),
-                60: re.compile(r'\b(very|really|struggling|hard|difficult)\b', re.I),
-                40: re.compile(r'\b(somewhat|moderate|bit|slightly)\b', re.I),
-                20: re.compile(r'\b(mild|little|okay|fine)\b', re.I),
+                80: re.compile(r'\b(crisis|severe|extremely|desperate|can\'t go on)\b', re.I),
+                60: re.compile(r'\b(very|really|struggling|hard|difficult|overwhelmed)\b', re.I),
+                40: re.compile(r'\b(somewhat|moderate|bit|slightly|manage)\b', re.I),
+                20: re.compile(r'\b(mild|little|okay|fine|alright)\b', re.I),
             }
             for level, pattern in distress_patterns.items():
                 if pattern.search(text):
                     distress = level
                     break
 
-        return LLMResponse(text=clean_text, distress=distress or 0, rag_sources=rag)
+        return LLMResponse(text=clean_text.strip(), distress=distress or 0, rag_sources=rag)

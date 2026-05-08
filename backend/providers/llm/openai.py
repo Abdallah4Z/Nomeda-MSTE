@@ -57,32 +57,10 @@ class OpenAILikeLLMProvider(LLMProvider):
         try:
             full_messages = [{"role": "system", "content": self._system_prompt}]
             for msg in messages:
-                full_messages.append({"role": msg.get("role", "user"), "content": msg["content"]})
-
-            result = await self._client.chat.completions.create(
-                model=self._model,
-                messages=full_messages,
-                max_tokens=max_tokens or self._max_tokens,
-                temperature=temperature or self._temperature,
-            )
-            text = result.choices[0].message.content or ""
-            return LLMResponse(text=text)
-        except Exception as e:
-            return LLMResponse(text="I'm here with you.", distress=0)
-
-    async def generate(
-        self,
-        messages: List[Dict[str, str]],
-        max_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-    ) -> LLMResponse:
-        if not self._client:
-            return LLMResponse(text="I'm here with you.", distress=0)
-
-        try:
-            full_messages = [{"role": "system", "content": self._system_prompt}]
-            for msg in messages:
-                full_messages.append({"role": msg.get("role", "user"), "content": msg["content"]})
+                role = msg.get("role", "user")
+                if role not in ("user", "assistant", "system"):
+                    role = "user"
+                full_messages.append({"role": role, "content": msg["content"]})
 
             result = await self._client.chat.completions.create(
                 model=self._model,
@@ -119,8 +97,8 @@ class OpenAILikeLLMProvider(LLMProvider):
         enriched_messages = list(messages)
         if context_str:
             enriched_messages.insert(0, {
-                "role": "user",
-                "content": f"[Context from monitoring system]\n{context_str}"
+                "role": "system",
+                "content": f"[REFERENCE CONTEXT — IGNORE IF NOT RELEVANT]\n{context_str}"
             })
 
         return await self.generate(enriched_messages, max_tokens, temperature)
@@ -141,14 +119,14 @@ class OpenAILikeLLMProvider(LLMProvider):
 
         if distress is None:
             patterns = {
-                80: re.compile(r'\b(crisis|severe|extremely|desperate)\b', re.I),
-                60: re.compile(r'\b(very|really|struggling|hard|difficult)\b', re.I),
-                40: re.compile(r'\b(somewhat|moderate|bit|slightly)\b', re.I),
-                20: re.compile(r'\b(mild|little|okay|fine)\b', re.I),
+                80: re.compile(r'\b(crisis|severe|extremely|desperate|can\'t go on)\b', re.I),
+                60: re.compile(r'\b(very|really|struggling|hard|difficult|overwhelmed)\b', re.I),
+                40: re.compile(r'\b(somewhat|moderate|bit|slightly|manage)\b', re.I),
+                20: re.compile(r'\b(mild|little|okay|fine|alright)\b', re.I),
             }
             for level, pattern in patterns.items():
                 if pattern.search(text):
                     distress = level
                     break
 
-        return LLMResponse(text=clean_text, distress=distress or 0)
+        return LLMResponse(text=clean_text.strip(), distress=distress or 0)

@@ -15,10 +15,11 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             try:
                 state = system_state.snapshot()
+                voice_emo = state.get("voice_emotion")
                 payload = {
                     "running": state.get("running", False),
                     "video_emotion": state.get("video_emotion"),
-                    "voice_emotion": state.get("voice_emotion"),
+                    "voice_emotion": voice_emo if voice_emo else "--",
                     "distress": state.get("distress"),
                     "stt_text": state.get("stt_text"),
                     "llm_response": state.get("llm_response"),

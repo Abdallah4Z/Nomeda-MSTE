@@ -1,11 +1,33 @@
 import asyncio
 import base64
 import os
+import struct
 import time
 from typing import Optional
 
 from .base import TTSProvider, TTSResponse
 from ..base import ProviderStatus
+
+
+def _pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, bits: int = 16) -> bytes:
+    data_size = len(pcm_data)
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF",
+        36 + data_size,
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        channels,
+        sample_rate,
+        sample_rate * channels * bits // 8,
+        channels * bits // 8,
+        bits,
+        b"data",
+        data_size,
+    )
+    return header + pcm_data
 
 
 class GeminiTTSProvider(TTSProvider):
@@ -14,7 +36,7 @@ class GeminiTTSProvider(TTSProvider):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gemini-2.0-flash-tts-preview",
+        model: str = "gemini-2.5-flash-preview-tts",
         voice: str = "Kore",
         tts_dir: str = "data/tts",
     ):
@@ -72,14 +94,17 @@ class GeminiTTSProvider(TTSProvider):
             if not audio_data:
                 return TTSResponse(audio_data=b"", mime_type="audio/wav")
 
+            # Gemini returns raw PCM — wrap in WAV container
+            audio_data = _pcm_to_wav(audio_data, sample_rate=24000)
+
             ts = int(time.time() * 1000)
             wav_path = os.path.join(self._tts_dir, f"tts_{ts}.wav")
-            latest_path = os.path.join(self._tts_dir, "latest.wav")
             with open(wav_path, "wb") as f:
                 f.write(audio_data)
-            temp_link = latest_path + ".tmp"
-            os.symlink(os.path.basename(wav_path), temp_link)
-            os.replace(temp_link, latest_path)
+            latest_path = os.path.join(self._tts_dir, "latest.wav")
+            if os.path.exists(latest_path):
+                os.remove(latest_path)
+            os.rename(wav_path, latest_path)
 
             b64 = base64.b64encode(audio_data).decode("utf-8")
             return TTSResponse(

@@ -62,7 +62,7 @@ class ChromaRAGProvider(RAGProvider):
         if not self._db:
             return
         try:
-            from langchain.schema import Document
+            from langchain_core.documents import Document
             docs = []
             for i, text in enumerate(texts):
                 meta = metadatas[i] if metadatas and i < len(metadatas) else {}

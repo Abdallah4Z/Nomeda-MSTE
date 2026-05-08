@@ -7,6 +7,7 @@ class EmotionPoint(BaseModel):
     face: Optional[str] = None
     voice: Optional[str] = None
     distress: int = 0
+    confidence: float = 0.0
 
 
 class EmotionTimeline(BaseModel):

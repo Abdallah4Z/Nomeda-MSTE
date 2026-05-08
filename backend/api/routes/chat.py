@@ -22,11 +22,14 @@ async def chat(
 
     state = system_state.snapshot()
     face_emotion = state.get("video_emotion")
-    voice_emotion = state.get("voice_emotion")
+    voice_emotion = state.get("voice_emotion") or "--"
     distress = state.get("distress")
+
+    history = sm.get_conversation_history(max_exchanges=10, current_text=body.message)
 
     result = await container.orchestrator.process_chat_message(
         text=body.message,
+        conversation_history=history,
         face_emotion=face_emotion,
         voice_emotion=voice_emotion,
         distress=distress,

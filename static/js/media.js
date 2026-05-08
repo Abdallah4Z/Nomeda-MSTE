@@ -22,7 +22,7 @@ async function initCamera() {
     await v.play();
 
     var pipFeed = $('pipFeed');
-    pipFeed.src = '/video_feed';
+    pipFeed.srcObject = stream;
     pipFeed.style.display = '';
     $('pipPlaceholder').style.display = 'none';
 
@@ -68,6 +68,7 @@ function initVoiceRecord(btnEl, onResult) {
     btnEl.classList.remove('recording');
     var span = btnEl.querySelector('span');
     if (span) span.textContent = 'Hold to record';
+    if (typeof Face !== 'undefined' && Face.setListening) Face.setListening(false);
     if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
       state.mediaRecorder.stop();
     }
@@ -80,6 +81,7 @@ function initVoiceRecord(btnEl, onResult) {
     btnEl.classList.add('recording');
     var span = btnEl.querySelector('span');
     if (span) span.textContent = 'Recording...';
+    if (typeof Face !== 'undefined' && Face.setListening) Face.setListening(true);
 
     state.audioChunks = [];
     try {
@@ -102,6 +104,7 @@ function initVoiceRecord(btnEl, onResult) {
       console.error('Voice mic error:', err);
       btnEl.classList.remove('recording');
       if (span) span.textContent = 'Hold to record';
+      if (typeof Face !== 'undefined' && Face.setListening) Face.setListening(false);
       recording = false;
     }
   };

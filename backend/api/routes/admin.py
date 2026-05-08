@@ -20,7 +20,7 @@ async def admin_status(
         total = await store.get_total_count()
         recent = await store.get_recent_sessions(5)
 
-    provider_statuses = container.all_provider_statuses()
+    provider_statuses = await container.all_provider_statuses()
     models_ready = sum(1 for p in provider_statuses if p.get("status") == "ready")
     models_total = len(provider_statuses)
 
@@ -98,5 +98,5 @@ async def get_logs(
 async def get_models(
     container: Container = Depends(get_container),
 ):
-    statuses = container.all_provider_statuses()
+    statuses = await container.all_provider_statuses()
     return {"models": statuses}

@@ -49,12 +49,47 @@ class FasterWhisperSTTProvider(STTProvider):
             import io
             import soundfile as sf
             import numpy as np
+            from ...utils.audio import decode_audio
 
-            buf = io.BytesIO(audio_data)
-            audio_np, sr = sf.read(buf)
+            audio_np = None
+            sr = sample_rate
+
+            # 1. Try soundfile directly (handles WAV, FLAC, etc.)
+            try:
+                buf = io.BytesIO(audio_data)
+                audio_np, sr = sf.read(buf)
+            except Exception:
+                pass
+
+            # 2. Try ffmpeg decode (handles WebM/Opus from browser)
+            if audio_np is None:
+                try:
+                    wav = decode_audio(audio_data, target_sr=sample_rate)
+                    if wav:
+                        buf = io.BytesIO(wav)
+                        audio_np, sr = sf.read(buf)
+                except Exception:
+                    pass
+
+            # 3. Fallback: raw PCM Int16 (headerless WAV) from browser
+            if audio_np is None:
+                try:
+                    raw = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+                    audio_np = raw
+                    sr = 48000
+                except Exception:
+                    pass
+
+            if audio_np is None:
+                return STTResponse(text="")
+
             if sr != sample_rate:
                 import librosa
                 audio_np = librosa.resample(audio_np, orig_sr=sr, target_sr=sample_rate)
+
+            # Skip audio shorter than 0.5s
+            if len(audio_np) < sample_rate * 0.5:
+                return STTResponse(text="")
 
             segments, info = self._model.transcribe(
                 audio_np.astype(np.float32),

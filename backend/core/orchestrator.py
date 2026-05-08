@@ -23,6 +23,7 @@ class Orchestrator:
         session: Optional[SessionManager] = None,
         event_bus: Optional[EventBus] = None,
         tts_distress_threshold: int = 0,
+        rag_relevance_threshold: float = 1.0,
     ):
         self._llm = llm
         self._tts = tts
@@ -33,10 +34,12 @@ class Orchestrator:
         self._session = session
         self._event_bus = event_bus
         self._tts_distress_threshold = tts_distress_threshold
+        self._rag_relevance_threshold = rag_relevance_threshold
 
     async def process_chat_message(
         self,
         text: str,
+        conversation_history: Optional[list[dict]] = None,
         face_emotion: Optional[str] = None,
         voice_emotion: Optional[str] = None,
         distress: Optional[int] = None,
@@ -45,13 +48,20 @@ class Orchestrator:
             return {"response": "I'm here with you.", "face_emotion": face_emotion, "voice_emotion": voice_emotion}
 
         rag_context = ""
+        rag_sources = []
         if self._rag:
             try:
-                rag_context = await self._rag.format_context(text)
+                results = await self._rag.search(text, top_k=3)
+                if results:
+                    filtered = [r for r in results if r.score <= self._rag_relevance_threshold]
+                    rag_sources = [{"text": r.text, "score": r.score, "metadata": r.metadata} for r in filtered]
+                    if filtered:
+                        rag_context = await self._rag.format_context(text)
             except Exception:
                 pass
 
-        messages = [{"role": "user", "content": text}]
+        messages = list(conversation_history) if conversation_history else []
+        messages.append({"role": "user", "content": text})
 
         response = await self._llm.generate_with_context(
             messages=messages,
@@ -87,7 +97,7 @@ class Orchestrator:
             "face_emotion": face_emotion,
             "voice_emotion": voice_emotion,
             "distress": distress_val,
-            "rag_sources": response.rag_sources,
+            "rag_sources": rag_sources,
             "tts_audio_url": tts_audio_url,
             "tts_audio_b64": tts_audio_b64,
         }

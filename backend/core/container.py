@@ -93,14 +93,11 @@ class Container:
         if self._store:
             await self._store.shutdown()
 
-    def all_provider_statuses(self) -> list[Dict[str, Any]]:
+    async def all_provider_statuses(self) -> list[Dict[str, Any]]:
         statuses = []
         for name, provider in self._providers.items():
             try:
-                import asyncio
-                loop = asyncio.new_event_loop()
-                status = loop.run_until_complete(provider.health())
-                loop.close()
+                status = await provider.health()
                 statuses.append({
                     "name": name,
                     "status": "ready" if status.ready else "error",

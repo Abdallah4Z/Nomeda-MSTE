@@ -32,14 +32,30 @@ const state = {
 // ── DOM Cache ──
 function $(id) { return document.getElementById(id); }
 
+// ── Splash ──
+function hideSplash() {
+  var el = document.getElementById('splash');
+  if (!el) return;
+  el.style.opacity = '0';
+  setTimeout(function () { el.style.display = 'none'; }, 600);
+}
+
 // ── Init ──
 document.addEventListener('DOMContentLoaded', function () {
-  if (location.search.indexOf('reset') >= 0) {
-    localStorage.removeItem('nomeda_skip_checkin');
+  try {
+    if (location.search.indexOf('reset') >= 0) {
+      localStorage.removeItem('nomeda_skip_checkin');
+    }
+    var skip = localStorage.getItem('nomeda_skip_checkin') === 'true';
+    if (skip) { showChat(); startSessionMedia(); }
+    else showCheckin();
+    hideSplash();
+  } catch (e) {
+    console.error('Init error:', e);
+    var el = document.getElementById('screen-checkin');
+    if (el) el.classList.add('active');
+    hideSplash();
   }
-  var skip = localStorage.getItem('nomeda_skip_checkin') === 'true';
-  if (skip) { showChat(); startSessionMedia(); }
-  else showCheckin();
 });
 
 // ── Screen Routing ──
@@ -153,7 +169,6 @@ async function startSessionMedia() {
   }
   state.session.isRunning = true;
   initCamera();
-  initLiveAudio();
   connectWS();
   startTimer();
 
@@ -213,16 +228,17 @@ function initChatInput() {
   var inp = $('chatInput');
   var btn = $('sendBtn');
 
-  inp.onfocus = function () { Face.setExpression('listening'); };
+  inp.onfocus = function () { Face.setExpression('listening'); unlockAudio(); };
   inp.oninput = function () { btn.disabled = !inp.value.trim(); };
   inp.onkeydown = function (e) {
     if (e.key === 'Enter' && !e.shiftKey && inp.value.trim()) {
       e.preventDefault();
+      unlockAudio();
       sendMessage(inp.value.trim());
     }
   };
   btn.onclick = function () {
-    if (inp.value.trim()) sendMessage(inp.value.trim());
+    if (inp.value.trim()) { unlockAudio(); sendMessage(inp.value.trim()); }
   };
 }
 
@@ -243,18 +259,22 @@ async function sendMessage(text) {
     hideTyping();
     if (res.ok) {
       var data = await res.json();
-      addMessage({
+      var msg = {
         role: 'ai',
         text: data.response || 'I\'m here with you.',
         fusion: { face: data.face_emotion, voice: data.voice_emotion, distress: data.distress },
         rag: data.rag_sources && data.rag_sources.length > 0 ? data.rag_sources[0].text : null,
-        ttsAudio: data.tts_audio_url || data.tts_audio_b64 || null,
+        ttsAudio: data.tts_audio_b64 ? 'data:audio/wav;base64,' + data.tts_audio_b64 : null,
+        ttsAudioUrl: data.tts_audio_url || null,
         timestamp: new Date().toISOString()
-      });
-      if (data.tts_audio_url || data.tts_audio_b64) {
+      };
+      addMessage(msg);
+      if (msg.ttsAudio || msg.ttsAudioUrl) {
         Face.setExpression('talking');
+        playTTS(msg);
       } else {
-        Face.setExpression('listening');
+        Face.setExpression('talking');
+        setTimeout(function () { Face.setExpression('listening'); }, Math.min(3000, (data.response || '').length * 25));
       }
     } else {
       Face.setExpression('listening');
@@ -270,6 +290,20 @@ async function sendMessage(text) {
       timestamp: new Date().toISOString()
     });
   }
+}
+
+function initCheckinVoice() {
+  initVoiceRecord($('checkinVoiceBtn'), async function (blob) {
+    var fd = new FormData();
+    fd.append('audio', blob, 'voice.webm');
+    try {
+      var res = await fetch('/api/voice-note', { method: 'POST', body: fd });
+      if (res.ok) {
+        var data = await res.json();
+        if (data.transcript) $('checkinText').value = data.transcript;
+      }
+    } catch (e) { /* silent */ }
+  });
 }
 
 function initChatVoice() {
@@ -296,14 +330,29 @@ function initTimeline() {
 }
 
 // ── TTS ──
+var ttsCtx = null;
+
+function unlockAudio() {
+  if (!ttsCtx) {
+    ttsCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (ttsCtx.state === 'suspended') {
+    ttsCtx.resume();
+  }
+}
+
 function playTTS(msg) {
   if (state.currentAudio) { state.currentAudio.pause(); state.currentAudio = null; }
-  if (!msg.ttsAudio) return;
+
+  var src = msg.ttsAudio || msg.ttsAudioUrl;
+  if (!src) return;
+
+  unlockAudio();
 
   Face.startTalking();
   var btn = document.querySelector('.tts-btn[data-id="' + msg._id + '"]');
   try {
-    var audio = new Audio(msg.ttsAudio);
+    var audio = new Audio(src);
     state.currentAudio = audio;
     if (btn) btn.classList.add('playing');
     audio.addEventListener('ended', function () {
@@ -316,14 +365,17 @@ function playTTS(msg) {
       if (btn) btn.classList.remove('playing');
       state.currentAudio = null;
       Face.stopTalking();
+      Face.setExpression('listening');
     });
     audio.play().catch(function () {
       if (btn) btn.classList.remove('playing');
       Face.stopTalking();
+      Face.setExpression('listening');
     });
   } catch (e) {
     console.warn('TTS error:', e);
     Face.stopTalking();
+    Face.setExpression('listening');
   }
 }
 
