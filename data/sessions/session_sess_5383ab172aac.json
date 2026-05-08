@@ -1,0 +1,92 @@
+{
+  "session_id": "sess_5383ab172aac",
+  "duration_seconds": 182,
+  "checkin": {
+    "emotion": "sad",
+    "text": "iam sad"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "text": "hi, how are you",
+      "timestamp": "2026-05-08T01:01:47.245124+00:00"
+    },
+    {
+      "role": "ai",
+      "text": "It's nice to meet you. I'm doing well, thanks for asking. But I'm more interested in how you're doing. What brings you here today?",
+      "timestamp": "2026-05-08T01:01:48.251545+00:00",
+      "fusion": {
+        "face": null,
+        "voice": "--",
+        "distress": null
+      }
+    },
+    {
+      "role": "user",
+      "text": "iam feeling very bad i just lost my job",
+      "timestamp": "2026-05-08T01:02:15.281650+00:00"
+    },
+    {
+      "role": "ai",
+      "text": "I'm so sorry to hear that you lost your job. That can be a really tough and overwhelming experience. It sounds like you're feeling pretty down about it right now. Can you tell me more about what's been going through your mind since you found out?",
+      "timestamp": "2026-05-08T01:02:15.867578+00:00",
+      "fusion": {
+        "face": null,
+        "voice": "--",
+        "distress": null
+      }
+    },
+    {
+      "role": "user",
+      "text": "yes can you tell me what to do rn i feel really really down rn",
+      "timestamp": "2026-05-08T01:02:38.488236+00:00"
+    },
+    {
+      "role": "ai",
+      "text": "I can sense that you're feeling really down and overwhelmed right now. It sounds like you're struggling to cope with the news of losing your job. Before we think about what to do next, can you tell me what's been going through your mind since you found out? What are some of the thoughts and feelings that are coming up for you? Sometimes talking about it can help us feel a bit better and get a sense of direction. And if you're open to it, we can explore some small steps you might take to start feeling a bit more grounded and in control again.",
+      "timestamp": "2026-05-08T01:02:39.316708+00:00",
+      "fusion": {
+        "face": null,
+        "voice": "--",
+        "distress": null
+      }
+    },
+    {
+      "role": "user",
+      "text": "i was thinking of killing my self i cant figure it out",
+      "timestamp": "2026-05-08T01:02:58.080575+00:00"
+    },
+    {
+      "role": "ai",
+      "text": "I'm so glad you're reaching out and talking to me about this. It takes a lot of courage to share something that difficult. I want you to know that I'm here with you, and I care about what you're going through. It sounds like the pain and hopelessness are feeling really overwhelming right now. Can you tell me more about what's going on and how you're feeling? Sometimes talking about it can help us feel a bit better and find some way to cope. If you're in immediate danger or need someone to talk to right away, there are also resources available to support you, like crisis hotlines or emergency services. We can explore those options together if you need them.",
+      "timestamp": "2026-05-08T01:02:59.069802+00:00",
+      "fusion": {
+        "face": null,
+        "voice": "--",
+        "distress": null
+      }
+    },
+    {
+      "role": "user",
+      "text": "what should i do now?",
+      "timestamp": "2026-05-08T01:04:11.655074+00:00"
+    },
+    {
+      "role": "ai",
+      "text": "I want you to know that you're not alone, and I'm here to support you. It sounds like things are feeling really tough right now. Before we think about what to do next, I want to make sure you're safe. Can you tell me if you're in a safe place, and if there's someone with you who can support you? If you need someone to talk to right away, we can also look into crisis resources together. Sometimes, having a plan in place can help us feel a bit more grounded. What do you think would help you feel safe and supported right now?",
+      "timestamp": "2026-05-08T01:04:12.395199+00:00",
+      "fusion": {
+        "face": null,
+        "voice": "--",
+        "distress": null
+      }
+    }
+  ],
+  "emotion_timeline": [],
+  "stats": {
+    "message_count": 5,
+    "avg_distress": 0,
+    "dominant_emotion": null
+  },
+  "timestamp": "2026-05-08T01:04:30.865586+00:00"
+}

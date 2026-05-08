@@ -87,7 +87,10 @@ class Orchestrator:
         tts_audio_b64 = None
 
         distress_val = response.distress or distress or 0
-        if self._tts and distress_val >= self._tts_distress_threshold:
+        tts_enabled = True
+        if self._runtime_config:
+            tts_enabled = self._runtime_config.get("tts.enabled", True) and self._runtime_config.get("tts.auto_play", True)
+        if self._tts and distress_val >= self._tts_distress_threshold and tts_enabled:
             try:
                 tts_result = await self._tts.synthesize(response.text)
                 if tts_result.base64:
